@@ -196,7 +196,14 @@ class ProgramController extends Controller
                       ->orWhere('status', 'complete')
                       ->orWhereNull('status'); // Include programs with no status set (legacy)
             })
-            ->get();
+            ->get()
+            ->map(function($program) {
+                // Add current beneficiary count to each program
+                $currentBeneficiaries = $program->beneficiaries()->count();
+                $program->current_beneficiaries = $currentBeneficiaries;
+                $program->is_full = $program->max_beneficiaries && $currentBeneficiaries >= $program->max_beneficiaries;
+                return $program;
+            });
         
         return response()->json($programs);
     }

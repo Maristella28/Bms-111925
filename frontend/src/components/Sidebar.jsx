@@ -241,7 +241,7 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
         },
         { 
           title: "Asset Tracking", 
-          path: `/${userRole}/asset-tracking`,
+          path: `/${userRole}/inventoryAssets?tab=tracking`,
           module: "inventory",
           subModule: "asset_tracking"
         }

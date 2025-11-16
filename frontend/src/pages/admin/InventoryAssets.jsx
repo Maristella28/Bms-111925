@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import axiosInstance from '../../utils/axiosConfig';
 import Navbar from "../../components/Navbar";
 import Sidebar from "../../components/Sidebar";
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAdminResponsiveLayout } from "../../hooks/useAdminResponsiveLayout";
 import {
   BuildingOfficeIcon,
@@ -210,6 +210,7 @@ const TrackingActionsDropdown = ({ asset, onGenerateTracking, onViewDetails }) =
 
 const InventoryAssets = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { mainClasses } = useAdminResponsiveLayout();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -218,8 +219,11 @@ const InventoryAssets = () => {
   const [viewMode, setViewMode] = useState('all'); // all, pending, approved, paid, denied
   const [filteredRequests, setFilteredRequests] = useState([]);
   
-  // Tab state
-  const [activeTab, setActiveTab] = useState('requests'); // 'requests' or 'tracking'
+  // Tab state - read from URL query parameter
+  const [activeTab, setActiveTab] = useState(() => {
+    const tabParam = searchParams.get('tab');
+    return tabParam === 'tracking' ? 'tracking' : 'requests';
+  });
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -258,6 +262,16 @@ const InventoryAssets = () => {
   const [selectedAssetForTracking, setSelectedAssetForTracking] = useState(null);
   const [returnDate, setReturnDate] = useState('');
   const [returnTime, setReturnTime] = useState('');
+
+  // Sync activeTab with URL query parameter
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'tracking') {
+      setActiveTab('tracking');
+    } else if (tabParam === null || tabParam === 'requests') {
+      setActiveTab('requests');
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     fetchRequests(currentPage);
@@ -990,7 +1004,10 @@ const InventoryAssets = () => {
                   </div>
                 </div>
                 <button
-                  onClick={() => setActiveTab('requests')}
+                  onClick={() => {
+                    setActiveTab('requests');
+                    setSearchParams({});
+                  }}
                   className="bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-semibold text-sm transition-all border-2 border-gray-200 flex items-center gap-2"
                 >
                   <BuildingOfficeIcon className="w-4 h-4" />
@@ -1039,6 +1056,7 @@ const InventoryAssets = () => {
                       <button
                         onClick={() => {
                           setActiveTab('tracking');
+                          setSearchParams({ tab: 'tracking' });
                           setShowManagementDropdown(false);
                         }}
                         className="w-full text-left px-4 py-3 hover:bg-purple-50 transition-colors text-sm font-medium text-gray-700"

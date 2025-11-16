@@ -106,9 +106,12 @@ const Dashboard = () => {
           setHotlineError('❌ Failed to load emergency hotlines.');
         }
         
-        // Handle programs
+        // Handle programs - filter out full programs
         if (programsRes.status === 'fulfilled') {
-          setPrograms(programsRes.value.data || []);
+          const allPrograms = programsRes.value.data || [];
+          // Filter out programs that have reached their maximum beneficiary capacity
+          const availablePrograms = allPrograms.filter(program => !program.is_full);
+          setPrograms(availablePrograms);
         } else {
           console.error('Error fetching programs:', programsRes.reason);
           setProgramError('❌ Failed to load available programs.');
@@ -400,7 +403,7 @@ const Dashboard = () => {
                         <span className="text-3xl">📭</span>
                       </div>
                       <h3 className="text-xl font-semibold text-gray-700 mb-2">No Programs Available</h3>
-                      <p className="text-gray-500">Check back later for new programs and opportunities.</p>
+                      <p className="text-gray-500">All programs have reached their maximum number of beneficiaries and are no longer accepting new applications. Check back later for new programs and opportunities.</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -448,10 +451,14 @@ const Dashboard = () => {
                                 <span className="text-xs text-gray-500 font-medium">Amount:</span>
                                 <span className="text-sm font-bold text-green-600">₱{program.amount ? program.amount.toLocaleString() : 'TBD'}</span>
                               </div>
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs text-gray-500 font-medium">Max Beneficiaries:</span>
-                                <span className="text-xs font-semibold text-gray-700">{program.max_beneficiaries || 'Unlimited'}</span>
-                              </div>
+                              {program.max_beneficiaries && (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs text-gray-500 font-medium">Available Slots:</span>
+                                  <span className="text-xs font-semibold text-emerald-600">
+                                    {program.max_beneficiaries - (program.current_beneficiaries || 0)} / {program.max_beneficiaries}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -530,17 +537,11 @@ const Dashboard = () => {
                           >
                             <div className="p-6">
                               <div className="flex flex-col gap-3">
-                                <div className="flex items-center justify-between">
+                                <div className="flex items-center">
                                   <span className="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-bold">
                                     <FaExclamationTriangle className="mr-2 text-green-500" />
                                     {details.type}
                                   </span>
-                                  <a
-                                    href={`tel:${details.hotline}`}
-                                    className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-full font-bold shadow-lg hover:from-green-600 hover:to-emerald-600 transition-colors duration-300 text-sm"
-                                  >
-                                    Call Now
-                                  </a>
                                 </div>
                                 
                                 <div className="flex items-center gap-3 text-xl font-bold text-green-700">
@@ -685,6 +686,20 @@ const Dashboard = () => {
                         <span className="text-gray-600 font-medium">Max Beneficiaries:</span>
                         <span className="text-gray-800">{selectedProgram.max_beneficiaries || 'Unlimited'}</span>
                       </div>
+                      {selectedProgram.max_beneficiaries && (
+                        <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                          <span className="text-gray-600 font-medium">Current Beneficiaries:</span>
+                          <span className="text-gray-800">{selectedProgram.current_beneficiaries || 0} / {selectedProgram.max_beneficiaries}</span>
+                        </div>
+                      )}
+                      {selectedProgram.max_beneficiaries && (
+                        <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                          <span className="text-gray-600 font-medium">Available Slots:</span>
+                          <span className={`font-semibold ${selectedProgram.is_full ? 'text-red-600' : 'text-emerald-600'}`}>
+                            {selectedProgram.max_beneficiaries - (selectedProgram.current_beneficiaries || 0)} remaining
+                          </span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between py-3">
                         <span className="text-gray-600 font-medium">Duration:</span>
                         <span className="text-gray-800">
@@ -754,12 +769,21 @@ const Dashboard = () => {
                   >
                     Close
                   </button>
-                  <button
-                    onClick={() => viewFullDetails(selectedProgram)}
-                    className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl font-medium transition-all duration-300 shadow-md hover:shadow-lg"
-                  >
-                    View Full Details & Apply
-                  </button>
+                  {selectedProgram.is_full ? (
+                    <div className="px-6 py-3 bg-red-50 border-2 border-red-200 text-red-700 rounded-xl font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">⚠️</span>
+                        <span>This program has reached its maximum number of beneficiaries and is no longer accepting new applications.</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => viewFullDetails(selectedProgram)}
+                      className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl font-medium transition-all duration-300 shadow-md hover:shadow-lg"
+                    >
+                      View Full Details & Apply
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
