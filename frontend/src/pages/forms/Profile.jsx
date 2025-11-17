@@ -995,19 +995,36 @@ const Profile = () => {
                       }
                       
                       // Fetch fresh data in the background
-                      axiosInstance.get('/profile')
-                        .then(res => {
-                          const profile = res.data?.user?.profile || res.data?.profile || res.data;
-                          if (profile) {
-                            console.log('Profile: Fetched fresh data from API:', profile);
-                            setForm(prev => ({
-                              ...prev,
-                              ...profile,
-                              verification_status: 'approved' // Ensure it stays approved
-                            }));
-                          }
-                        })
-                        .catch(err => console.error('Error refreshing profile:', err));
+                      // Only fetch if status is approved, otherwise just update with the data we received
+                      if (data.verification_status === 'approved') {
+                        axiosInstance.get('/profile')
+                          .then(res => {
+                            const profile = res.data?.user?.profile || res.data?.profile || res.data;
+                            if (profile) {
+                              console.log('Profile: Fetched fresh data from API:', profile);
+                              setForm(prev => ({
+                                ...prev,
+                                ...profile,
+                                verification_status: profile.verification_status || 'approved' // Use actual status from API
+                              }));
+                            }
+                          })
+                          .catch(err => console.error('Error refreshing profile:', err));
+                      } else {
+                        // For pending status, just update the form with the received data
+                        // IMPORTANT: Do NOT enable editing mode when status is pending
+                        const pendingStatus = data.status || data.verification_status || 'pending';
+                        setForm(prev => ({
+                          ...prev,
+                          verification_status: pendingStatus,
+                          residency_verification_image: data.imagePath || data.residency_verification_image
+                        }));
+                        
+                        // Explicitly ensure editing mode is disabled for pending status
+                        if (pendingStatus !== 'approved') {
+                          setIsEditing(false);
+                        }
+                      }
                     }}
                   />
                 </div>
