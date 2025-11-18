@@ -214,6 +214,35 @@ const StaffManagement = () => {
       }
     });
     
+    // Check for nested permissions that are true but parent might be false
+    // If any nested permission is true, ensure parent is also true
+    Object.entries(source).forEach(([apiKey, value]) => {
+      if (apiKey.includes('_') && apiKey.split('_').length === 3) {
+        const parts = apiKey.split('_');
+        const [mainApiKey, subKey, nestedKey] = parts;
+        const normalizedValue = value === true || value === 1 || value === '1' || value === 'true';
+        
+        if (normalizedValue) {
+          const uiKey = apiToUiMap[mainApiKey];
+          if (uiKey && base[uiKey] && base[uiKey].sub_permissions) {
+            const subPermission = base[uiKey].sub_permissions[subKey];
+            if (typeof subPermission === 'object' && subPermission !== null) {
+              // Ensure parent access is true if nested permission is true
+              subPermission.access = true;
+              base[uiKey].access = true;
+              
+              // Also ensure the 2-part key would be true (for consistency)
+              const twoPartKey = `${mainApiKey}_${subKey}`;
+              if (source[twoPartKey] === false || source[twoPartKey] === undefined) {
+                // We'll set it in the base structure
+                subPermission.access = true;
+              }
+            }
+          }
+        }
+      }
+    });
+    
     // Second pass: Process 3-part keys (e.g., residentsRecords_main_records_view) to set nested permissions
     Object.entries(source).forEach(([apiKey, value]) => {
       const normalizedValue = value === true || value === 1 || value === '1' || value === 'true';
@@ -244,6 +273,14 @@ const StaffManagement = () => {
               if (normalizedValue) {
                 subPermission.access = true;
                 base[uiKey].access = true;
+                // Also ensure the 2-part key (residentsRecords_main_records) is set to true in source
+                // This is important for the UI to show Main Records as enabled
+                const mainRecordsKey = `${mainApiKey}_${subKey}`;
+                if (source[mainRecordsKey] !== undefined && !source[mainRecordsKey]) {
+                  // If it exists but is false, we need to set it to true
+                  // But we can't modify source here, so we'll set it in the base structure
+                  subPermission.access = true;
+                }
               }
             }
           }
@@ -296,8 +333,21 @@ const StaffManagement = () => {
                 const nestedKeyFull = `${apiKey}_${subKey}_${nestedKey}`;
                 // Use the value from state if it exists, otherwise default to false
                 const nestedVal = subVal.sub_permissions?.[nestedKey];
-                out[nestedKeyFull] = nestedVal !== undefined ? Boolean(nestedVal) : false;
+                const nestedValue = nestedVal !== undefined ? Boolean(nestedVal) : false;
+                out[nestedKeyFull] = nestedValue;
                 console.log(`Setting ${nestedKeyFull} = ${out[nestedKeyFull]}`);
+                
+                // IMPORTANT: If any nested permission is true, ensure parent permissions are also true
+                if (nestedValue) {
+                  // Ensure the sub-module access is true
+                  const subModuleKey = `${apiKey}_${subKey}`;
+                  out[subModuleKey] = true;
+                  console.log(`Auto-enabling parent ${subModuleKey} because ${nestedKeyFull} is true`);
+                  
+                  // Ensure the main module access is true
+                  out[apiKey] = true;
+                  console.log(`Auto-enabling main module ${apiKey} because ${nestedKeyFull} is true`);
+                }
               });
             } else {
               // Handle simple sub-permissions (boolean)
@@ -1370,7 +1420,8 @@ const StaffManagement = () => {
                                 </div>
                                 
                                 {/* Nested sub-permissions (e.g., main_records: edit, disable, view) */}
-                                {hasNestedSubPermissions && subPermission?.access && (
+                                {/* Show nested permissions if subPermission.access is true OR if any nested permission is true */}
+                                {hasNestedSubPermissions && (subPermission?.access || Object.values(subPermission?.sub_permissions || {}).some(v => v === true)) && (
                                   <div className="ml-6 mt-3 space-y-2 pt-3 border-t border-gray-200">
                                     {Object.entries(subDefault.sub_permissions).map(([nestedKey, nestedDefault]) => {
                                       const nestedPermission = subPermission.sub_permissions?.[nestedKey] || false;
@@ -1391,23 +1442,31 @@ const StaffManagement = () => {
                                                 console.log(`Toggling ${moduleKey}.${subKey}.${nestedKey} to ${newValue}`);
                                                 
                                                 setEditingStaff(prev => {
+                                                  const updatedPermission = {
+                                                    ...currentPermission,
+                                                    sub_permissions: {
+                                                      ...(currentPermission.sub_permissions || {}),
+                                                      [subKey]: {
+                                                        ...subPermission,
+                                                        access: newValue ? true : subPermission.access, // Auto-enable parent if nested is enabled
+                                                        sub_permissions: {
+                                                          ...(subPermission.sub_permissions || {}),
+                                                          [nestedKey]: newValue
+                                                        }
+                                                      }
+                                                    }
+                                                  };
+                                                  
+                                                  // If enabling a nested permission, ensure module and sub-module access are true
+                                                  if (newValue) {
+                                                    updatedPermission.access = true;
+                                                  }
+                                                  
                                                   const updated = {
                                                     ...prev,
                                                     module_permissions: {
                                                       ...(prev.module_permissions || {}),
-                                                      [moduleKey]: {
-                                                        ...currentPermission,
-                                                        sub_permissions: {
-                                                          ...(currentPermission.sub_permissions || {}),
-                                                          [subKey]: {
-                                                            ...subPermission,
-                                                            sub_permissions: {
-                                                              ...(subPermission.sub_permissions || {}),
-                                                              [nestedKey]: newValue
-                                                            }
-                                                          }
-                                                        }
-                                                      }
+                                                      [moduleKey]: updatedPermission
                                                     }
                                                   };
                                                   
