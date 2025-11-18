@@ -48,7 +48,14 @@ const StaffManagement = () => {
     residents: { 
       access: false, 
       sub_permissions: {
-        main_records: false,
+        main_records: {
+          access: false,
+          sub_permissions: {
+            edit: false,
+            disable: false,
+            view: false
+          }
+        },
         verification: false,
         disabled_residents: false
       }
@@ -99,11 +106,30 @@ const StaffManagement = () => {
       const rawPermission = parsed[key];
       
       if (typeof defaultPermission === 'object' && defaultPermission.sub_permissions) {
-        // Handle sub-permissions
+        // Handle sub-permissions (can be nested)
         const normalizedSubPerms = {};
         Object.keys(defaultPermission.sub_permissions).forEach(subKey => {
+          const subDefault = defaultPermission.sub_permissions[subKey];
           const subValue = rawPermission?.[subKey] || rawPermission?.sub_permissions?.[subKey];
-          normalizedSubPerms[subKey] = subValue === true || subValue === 1 || subValue === '1' || subValue === 'true';
+          
+          // Check if this sub-permission has nested sub-permissions
+          if (typeof subDefault === 'object' && subDefault.sub_permissions) {
+            // Handle nested sub-permissions (e.g., main_records with edit, disable, view)
+            const nestedSubPerms = {};
+            Object.keys(subDefault.sub_permissions).forEach(nestedKey => {
+              const nestedValue = subValue?.[nestedKey] || subValue?.sub_permissions?.[nestedKey];
+              nestedSubPerms[nestedKey] = nestedValue === true || nestedValue === 1 || nestedValue === '1' || nestedValue === 'true';
+            });
+            
+            normalizedSubPerms[subKey] = {
+              access: subValue?.access === true || subValue?.access === 1 || subValue?.access === '1' || subValue?.access === 'true' ||
+                      subValue === true || subValue === 1 || subValue === '1' || subValue === 'true',
+              sub_permissions: nestedSubPerms
+            };
+          } else {
+            // Handle simple sub-permissions (boolean)
+            normalizedSubPerms[subKey] = subValue === true || subValue === 1 || subValue === '1' || subValue === 'true';
+          }
         });
         
         acc[key] = {
@@ -147,7 +173,7 @@ const StaffManagement = () => {
   // Convert backend permissions object to UI permission keys
   const mapApiToUiPermissions = (apiPerms) => {
     // Start with default permissions (all false)
-    const base = { ...defaultPermissions };
+    const base = JSON.parse(JSON.stringify(defaultPermissions)); // Deep clone
     
     // Parse the source permissions if it's a string
     const source = typeof apiPerms === 'string' ? (()=>{try{return JSON.parse(apiPerms);}catch{return {};}})() : (apiPerms || {});
@@ -164,13 +190,45 @@ const StaffManagement = () => {
       } else {
         // Check if this is a sub-permission (contains underscore)
         if (apiKey.includes('_')) {
-          const [mainApiKey, subKey] = apiKey.split('_', 2);
+          const parts = apiKey.split('_');
+          const mainApiKey = parts[0];
           const uiKey = apiToUiMap[mainApiKey];
+          
           if (uiKey && base[uiKey] && base[uiKey].sub_permissions) {
-            base[uiKey].sub_permissions[subKey] = normalizedValue;
-            // If any sub-permission is true, make sure the main permission is also true
-            if (normalizedValue) {
-              base[uiKey].access = true;
+            // Check if it's a nested sub-permission (e.g., residentsRecords_main_records_edit)
+            if (parts.length === 3) {
+              // Nested sub-permission: mainApiKey_subKey_nestedKey
+              const [_, subKey, nestedKey] = parts;
+              const subPermission = base[uiKey].sub_permissions[subKey];
+              
+              // Check if this sub-permission supports nested sub-permissions
+              if (typeof subPermission === 'object' && subPermission !== null && subPermission.sub_permissions) {
+                subPermission.sub_permissions[nestedKey] = normalizedValue;
+                // If any nested sub-permission is true, make sure the parent sub-permission and main permission are also true
+                if (normalizedValue) {
+                  subPermission.access = true;
+                  base[uiKey].access = true;
+                }
+              }
+            } else if (parts.length === 2) {
+              // Simple sub-permission: mainApiKey_subKey
+              const [_, subKey] = parts;
+              const subPermission = base[uiKey].sub_permissions[subKey];
+              
+              // Check if this is a nested sub-permission object or a simple boolean
+              if (typeof subPermission === 'object' && subPermission !== null && subPermission.sub_permissions) {
+                // It's a nested sub-permission object, set its access
+                subPermission.access = normalizedValue;
+                if (normalizedValue) {
+                  base[uiKey].access = true;
+                }
+              } else {
+                // It's a simple boolean sub-permission
+                base[uiKey].sub_permissions[subKey] = normalizedValue;
+                if (normalizedValue) {
+                  base[uiKey].access = true;
+                }
+              }
             }
           }
         } else {
@@ -241,7 +299,14 @@ const StaffManagement = () => {
       residents: { 
         access: false, 
         sub_permissions: {
-          main_records: false,
+          main_records: {
+            access: false,
+            sub_permissions: {
+              edit: false,
+              disable: false,
+              view: false
+            }
+          },
           verification: false,
           disabled_residents: false
         }
@@ -1109,7 +1174,21 @@ const StaffManagement = () => {
                                     // If enabling module, enable all sub-permissions; if disabling, disable all
                                     sub_permissions: hasSubPermissions ? 
                                       Object.keys(moduleConfig.sub_permissions).reduce((acc, subKey) => {
-                                        acc[subKey] = newAccess;
+                                        const subDefault = moduleConfig.sub_permissions[subKey];
+                                        // Check if this sub-permission has nested sub-permissions
+                                        if (typeof subDefault === 'object' && subDefault !== null && subDefault.sub_permissions) {
+                                          // Handle nested sub-permissions
+                                          acc[subKey] = {
+                                            access: newAccess,
+                                            sub_permissions: Object.keys(subDefault.sub_permissions).reduce((nestedAcc, nestedKey) => {
+                                              nestedAcc[nestedKey] = newAccess;
+                                              return nestedAcc;
+                                            }, {})
+                                          };
+                                        } else {
+                                          // Handle simple boolean sub-permission
+                                          acc[subKey] = newAccess;
+                                        }
                                         return acc;
                                       }, {}) : undefined
                                   }
@@ -1127,38 +1206,120 @@ const StaffManagement = () => {
                         <div className="space-y-3 mt-4 pt-4 border-t border-gray-100">
                           <h4 className="text-sm font-medium text-gray-700 mb-3">Sub-sections:</h4>
                           {Object.entries(moduleConfig.sub_permissions).map(([subKey, subDefault]) => {
-                            const subPermission = currentPermission.sub_permissions?.[subKey] || false;
+                            const subPermission = currentPermission.sub_permissions?.[subKey];
                             const subLabel = subKey.replace(/_/g, ' ');
                             
+                            // Check if this sub-permission has nested sub-permissions
+                            const hasNestedSubPermissions = typeof subDefault === 'object' && subDefault !== null && subDefault.sub_permissions;
+                            
                             return (
-                              <div key={subKey} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                  <span className="text-sm text-gray-700 capitalize">{subLabel}</span>
-                                </div>
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={Boolean(subPermission)}
-                                    onChange={(e) => {
-                                      setEditingStaff(prev => ({
-                                        ...prev,
-                                        module_permissions: {
-                                          ...(prev.module_permissions || {}),
-                                          [moduleKey]: {
-                                            ...currentPermission,
-                                            sub_permissions: {
-                                              ...(currentPermission.sub_permissions || {}),
-                                              [subKey]: e.target.checked
+                              <div key={subKey} className="bg-gray-50 rounded-lg p-3">
+                                {/* Main sub-permission toggle */}
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                    <span className="text-sm font-medium text-gray-700 capitalize">{subLabel}</span>
+                                  </div>
+                                  <label className="relative inline-flex items-center cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={hasNestedSubPermissions 
+                                        ? Boolean(subPermission?.access) 
+                                        : Boolean(subPermission)}
+                                      onChange={(e) => {
+                                        const newValue = e.target.checked;
+                                        if (hasNestedSubPermissions) {
+                                          // Handle nested sub-permissions
+                                          setEditingStaff(prev => ({
+                                            ...prev,
+                                            module_permissions: {
+                                              ...(prev.module_permissions || {}),
+                                              [moduleKey]: {
+                                                ...currentPermission,
+                                                sub_permissions: {
+                                                  ...(currentPermission.sub_permissions || {}),
+                                                  [subKey]: {
+                                                    access: newValue,
+                                                    // If enabling, enable all nested sub-permissions; if disabling, disable all
+                                                    sub_permissions: Object.keys(subDefault.sub_permissions).reduce((acc, nestedKey) => {
+                                                      acc[nestedKey] = newValue;
+                                                      return acc;
+                                                    }, {})
+                                                  }
+                                                }
+                                              }
                                             }
-                                          }
+                                          }));
+                                        } else {
+                                          // Handle simple boolean sub-permission
+                                          setEditingStaff(prev => ({
+                                            ...prev,
+                                            module_permissions: {
+                                              ...(prev.module_permissions || {}),
+                                              [moduleKey]: {
+                                                ...currentPermission,
+                                                sub_permissions: {
+                                                  ...(currentPermission.sub_permissions || {}),
+                                                  [subKey]: newValue
+                                                }
+                                              }
+                                            }
+                                          }));
                                         }
-                                      }));
-                                    }}
-                                    className="sr-only peer"
-                                  />
-                                  <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
-                                </label>
+                                      }}
+                                      className="sr-only peer"
+                                    />
+                                    <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                                  </label>
+                                </div>
+                                
+                                {/* Nested sub-permissions (e.g., main_records: edit, disable, view) */}
+                                {hasNestedSubPermissions && subPermission?.access && (
+                                  <div className="ml-6 mt-3 space-y-2 pt-3 border-t border-gray-200">
+                                    {Object.entries(subDefault.sub_permissions).map(([nestedKey, nestedDefault]) => {
+                                      const nestedPermission = subPermission.sub_permissions?.[nestedKey] || false;
+                                      const nestedLabel = nestedKey.replace(/_/g, ' ');
+                                      
+                                      return (
+                                        <div key={nestedKey} className="flex items-center justify-between p-2 bg-white rounded-md">
+                                          <div className="flex items-center gap-2">
+                                            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
+                                            <span className="text-xs text-gray-600 capitalize">{nestedLabel}</span>
+                                          </div>
+                                          <label className="relative inline-flex items-center cursor-pointer">
+                                            <input
+                                              type="checkbox"
+                                              checked={Boolean(nestedPermission)}
+                                              onChange={(e) => {
+                                                setEditingStaff(prev => ({
+                                                  ...prev,
+                                                  module_permissions: {
+                                                    ...(prev.module_permissions || {}),
+                                                    [moduleKey]: {
+                                                      ...currentPermission,
+                                                      sub_permissions: {
+                                                        ...(currentPermission.sub_permissions || {}),
+                                                        [subKey]: {
+                                                          ...subPermission,
+                                                          sub_permissions: {
+                                                            ...(subPermission.sub_permissions || {}),
+                                                            [nestedKey]: e.target.checked
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }));
+                                              }}
+                                              className="sr-only peer"
+                                            />
+                                            <div className="w-8 h-4 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-500"></div>
+                                          </label>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
