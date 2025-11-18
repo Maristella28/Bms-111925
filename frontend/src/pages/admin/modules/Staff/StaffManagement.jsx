@@ -182,63 +182,77 @@ const StaffManagement = () => {
     
     console.log('Mapping API to UI permissions:', { source, defaultPermissions });
     
-    // Map each backend permission to its UI equivalent
+    // First pass: Process 2-part keys (e.g., residentsRecords_main_records) to set parent access
+    // This ensures parent permissions are set before processing nested permissions
+    Object.entries(source).forEach(([apiKey, value]) => {
+      const normalizedValue = value === true || value === 1 || value === '1' || value === 'true';
+      
+      if (apiKey !== 'dashboard' && apiKey.includes('_')) {
+        const parts = apiKey.split('_');
+        if (parts.length === 2) {
+          const mainApiKey = parts[0];
+          const uiKey = apiToUiMap[mainApiKey];
+          const [_, subKey] = parts;
+          
+          if (uiKey && base[uiKey] && base[uiKey].sub_permissions) {
+            const subPermission = base[uiKey].sub_permissions[subKey];
+            if (typeof subPermission === 'object' && subPermission !== null && subPermission.sub_permissions) {
+              // It's a nested sub-permission object, set its access
+              subPermission.access = normalizedValue;
+              if (normalizedValue) {
+                base[uiKey].access = true;
+              }
+            } else {
+              // Simple boolean sub-permission
+              base[uiKey].sub_permissions[subKey] = normalizedValue;
+              if (normalizedValue) {
+                base[uiKey].access = true;
+              }
+            }
+          }
+        }
+      }
+    });
+    
+    // Second pass: Process 3-part keys (e.g., residentsRecords_main_records_view) to set nested permissions
     Object.entries(source).forEach(([apiKey, value]) => {
       const normalizedValue = value === true || value === 1 || value === '1' || value === 'true';
       
       // Handle dashboard specially (it maps to itself)
       if (apiKey === 'dashboard') {
         base.dashboard.access = normalizedValue;
-      } else {
-        // Check if this is a sub-permission (contains underscore)
-        if (apiKey.includes('_')) {
-          const parts = apiKey.split('_');
-          const mainApiKey = parts[0];
-          const uiKey = apiToUiMap[mainApiKey];
-          
-          if (uiKey && base[uiKey] && base[uiKey].sub_permissions) {
-            // Check if it's a nested sub-permission (e.g., residentsRecords_main_records_edit)
-            if (parts.length === 3) {
-              // Nested sub-permission: mainApiKey_subKey_nestedKey
-              const [_, subKey, nestedKey] = parts;
-              const subPermission = base[uiKey].sub_permissions[subKey];
-              
-              // Check if this sub-permission supports nested sub-permissions
-              if (typeof subPermission === 'object' && subPermission !== null && subPermission.sub_permissions) {
-                subPermission.sub_permissions[nestedKey] = normalizedValue;
-                // If any nested sub-permission is true, make sure the parent sub-permission and main permission are also true
-                if (normalizedValue) {
-                  subPermission.access = true;
-                  base[uiKey].access = true;
-                }
+      } else if (apiKey.includes('_')) {
+        const parts = apiKey.split('_');
+        const mainApiKey = parts[0];
+        const uiKey = apiToUiMap[mainApiKey];
+        
+        if (uiKey && base[uiKey] && base[uiKey].sub_permissions) {
+          // Check if it's a nested sub-permission (e.g., residentsRecords_main_records_edit)
+          if (parts.length === 3) {
+            // Nested sub-permission: mainApiKey_subKey_nestedKey
+            const [_, subKey, nestedKey] = parts;
+            const subPermission = base[uiKey].sub_permissions[subKey];
+            
+            // Check if this sub-permission supports nested sub-permissions
+            if (typeof subPermission === 'object' && subPermission !== null && subPermission.sub_permissions) {
+              // Initialize sub_permissions if it doesn't exist
+              if (!subPermission.sub_permissions) {
+                subPermission.sub_permissions = {};
               }
-            } else if (parts.length === 2) {
-              // Simple sub-permission: mainApiKey_subKey
-              const [_, subKey] = parts;
-              const subPermission = base[uiKey].sub_permissions[subKey];
-              
-              // Check if this is a nested sub-permission object or a simple boolean
-              if (typeof subPermission === 'object' && subPermission !== null && subPermission.sub_permissions) {
-                // It's a nested sub-permission object, set its access
-                subPermission.access = normalizedValue;
-                if (normalizedValue) {
-                  base[uiKey].access = true;
-                }
-              } else {
-                // It's a simple boolean sub-permission
-            base[uiKey].sub_permissions[subKey] = normalizedValue;
-            if (normalizedValue) {
-              base[uiKey].access = true;
-                }
+              subPermission.sub_permissions[nestedKey] = normalizedValue;
+              // If any nested sub-permission is true, make sure the parent sub-permission and main permission are also true
+              if (normalizedValue) {
+                subPermission.access = true;
+                base[uiKey].access = true;
               }
             }
           }
-        } else {
-          // Use the mapping for main permissions
-          const uiKey = apiToUiMap[apiKey];
-          if (uiKey && base[uiKey]) {
-            base[uiKey].access = normalizedValue;
-          }
+        }
+      } else {
+        // Use the mapping for main permissions (no underscores)
+        const uiKey = apiToUiMap[apiKey];
+        if (uiKey && base[uiKey]) {
+          base[uiKey].access = normalizedValue;
         }
       }
     });
