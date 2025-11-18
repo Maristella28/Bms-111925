@@ -632,14 +632,23 @@ const StaffManagement = () => {
     try {
       // Map UI keys to backend keys for saving
       const currentPermissions = editingStaff.module_permissions || {};
+      
+      console.log('=== PERMISSION UPDATE DEBUG ===');
+      console.log('1. Current editingStaff.module_permissions:', JSON.stringify(currentPermissions, null, 2));
+      console.log('2. Residents module permissions:', JSON.stringify(currentPermissions.residents, null, 2));
+      console.log('3. Main records permissions:', JSON.stringify(currentPermissions.residents?.sub_permissions?.main_records, null, 2));
+      
       const formattedPermissions = mapUiToApiPermissions(currentPermissions);
 
-      console.log('Sending permissions to backend:', formattedPermissions);
+      console.log('4. Formatted permissions to send:', JSON.stringify(formattedPermissions, null, 2));
+      console.log('5. Residents-related keys:', Object.keys(formattedPermissions).filter(k => k.includes('residents')));
 
       const response = await axiosInstance.put(`/api/admin/staff/${editingStaff.id}/permissions`, {
         module_permissions: formattedPermissions,
         staff_id: editingStaff.id
       });
+      
+      console.log('6. Backend response:', response.data);
 
       // Update the staff list with the new permissions (normalized booleans)
       setStaff(prevStaff => prevStaff.map(s => (
@@ -1144,10 +1153,18 @@ const StaffManagement = () => {
                             <button
                               onClick={() => {
                                 const initialPermissions = member.module_permissions || {};
+                                console.log('Opening permissions modal for:', member.name);
+                                console.log('Initial permissions:', JSON.stringify(initialPermissions, null, 2));
+                                console.log('Residents permissions:', JSON.stringify(initialPermissions.residents, null, 2));
+                                
+                                // Ensure all nested permissions are initialized with default structure
+                                const normalizedPermissions = normalizePermissions(initialPermissions);
+                                console.log('Normalized permissions:', JSON.stringify(normalizedPermissions, null, 2));
+                                
                                 setEditingStaff({
                                   ...member,
-                                  permissions: initialPermissions,
-                                  module_permissions: initialPermissions
+                                  permissions: normalizedPermissions,
+                                  module_permissions: normalizedPermissions
                                 });
                                 setShowPermissionsModal(true);
                               }}
@@ -1356,25 +1373,33 @@ const StaffManagement = () => {
                                               type="checkbox"
                                               checked={Boolean(nestedPermission)}
                                               onChange={(e) => {
-                                                setEditingStaff(prev => ({
-                                                  ...prev,
-                                                  module_permissions: {
-                                                    ...(prev.module_permissions || {}),
-                                                    [moduleKey]: {
-                                                      ...currentPermission,
-                                                      sub_permissions: {
-                                                        ...(currentPermission.sub_permissions || {}),
-                                                        [subKey]: {
-                                                          ...subPermission,
-                                                          sub_permissions: {
-                                                            ...(subPermission.sub_permissions || {}),
-                                                            [nestedKey]: e.target.checked
+                                                const newValue = e.target.checked;
+                                                console.log(`Toggling ${moduleKey}.${subKey}.${nestedKey} to ${newValue}`);
+                                                
+                                                setEditingStaff(prev => {
+                                                  const updated = {
+                                                    ...prev,
+                                                    module_permissions: {
+                                                      ...(prev.module_permissions || {}),
+                                                      [moduleKey]: {
+                                                        ...currentPermission,
+                                                        sub_permissions: {
+                                                          ...(currentPermission.sub_permissions || {}),
+                                                          [subKey]: {
+                                                            ...subPermission,
+                                                            sub_permissions: {
+                                                              ...(subPermission.sub_permissions || {}),
+                                                              [nestedKey]: newValue
+                                                            }
                                                           }
                                                         }
                                                       }
                                                     }
-                                                  }
-                                                }));
+                                                  };
+                                                  
+                                                  console.log('Updated state:', JSON.stringify(updated.module_permissions[moduleKey], null, 2));
+                                                  return updated;
+                                                });
                                               }}
                                               className="sr-only peer"
                                             />
