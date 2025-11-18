@@ -84,6 +84,8 @@ const AuthProvider = ({ children }) => {
           // Get the module_permissions or fall back to regular permissions
           const staffPermissions = staffRes.data.permissions || {};
           console.log('Raw staff permissions:', staffPermissions);
+          console.log('Staff permissions keys:', Object.keys(staffPermissions));
+          console.log('Staff permissions values:', Object.entries(staffPermissions).filter(([k, v]) => v === true || v === 1));
           
           // Create a mapping from backend permission keys to frontend sidebar module keys
           const permissionMapping = {
@@ -161,10 +163,21 @@ const AuthProvider = ({ children }) => {
           
           console.log('Final staff permissions for sidebar:', baseUser.permissions);
           console.log('Available backend permissions:', Object.keys(staffPermissions).filter(k => staffPermissions[k]));
+          console.log('Module permissions stored:', baseUser.module_permissions);
+          
+          // Verify permissions were set correctly
+          if (!baseUser.module_permissions || Object.keys(baseUser.module_permissions).length === 0) {
+            console.warn('WARNING: No module_permissions were set! Backend returned:', staffPermissions);
+          }
           
           console.log('Staff permissions set:', baseUser.permissions);
         } catch (err) {
           console.error('Error fetching staff permissions:', err);
+          console.error('Error details:', {
+            message: err.message,
+            response: err.response?.data,
+            status: err.response?.status
+          });
           // Fallback: Only grant dashboard access if permissions can't be fetched
           baseUser.permissions = {
             dashboard: true

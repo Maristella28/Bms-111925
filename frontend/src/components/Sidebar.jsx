@@ -367,11 +367,13 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
       }
       
       // Step 2: Fetch dashboard stats with reasonable timeout
+      // Only fetch if user has dashboard access (admin always has access)
       // Don't await - start all fetches in parallel immediately
       // NOTE: We don't update state here to prevent partial updates - wait for all data
-      const dashboardPromise = axiosInstance.get('/admin/dashboard', {
-        timeout: 20000 // 20 second timeout - increased to handle slow database queries
-      }).then(response => {
+      const dashboardPromise = (user?.role === 'admin' || hasModuleAccess('dashboard')) 
+        ? axiosInstance.get('/admin/dashboard', {
+            timeout: 20000 // 20 second timeout - increased to handle slow database queries
+          }).then(response => {
         const stats = response.data?.statistics || {};
         
         // Use dashboard stats for estimated counts (but don't update state yet)
@@ -389,22 +391,15 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
         }
         // Silently fail - we'll use detailed counts instead
         return null;
-      });
+      }).catch(() => null) : Promise.resolve(null);
       
       // Step 3: Fetch all detailed counts in parallel for accuracy (with timeouts)
+      // Only fetch counts for modules the user has access to
       const fetchPromises = [
         // Fetch pending document requests count (ONLY new requests needing approval)
-        // IMPORTANT: Notification badges show ONLY pending requests (status = 'pending')
-        // This means: NEW requests that need admin approval/rejection action
-        // 
-        // Why not all non-paid requests?
-        // - Pending = NEW request, needs immediate action (approve/reject) ✓ Badge shows this
-        // - Approved but unpaid = Already handled, just waiting for payment ✗ Not in badge
-        // - Rejected = Already handled ✗ Not in badge
-        // - Processing = Already approved, being processed ✗ Not in badge
-        //
-        // Result: Badge shows actionable items only (new requests needing approval)
-        axiosInstance.get('/admin/document-requests', {
+        // Only fetch if user has documents module access
+        (user?.role === 'admin' || hasModuleAccess('documents'))
+        ? axiosInstance.get('/admin/document-requests', {
           timeout: 15000 // 15 second timeout - increased for slow backend
         }).then(response => {
           const requests = extractArrayFromResponse(response.data, ['document_requests']);
@@ -436,12 +431,14 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
             console.error('Error fetching document requests count:', err);
           }
           return null;
-        }),
+        }).catch(() => null) : Promise.resolve(null),
         
         // Fetch pending verification count (matches ResidentsVerificationTable.jsx logic)
+        // Only fetch if user has residents module access
         // IMPORTANT: This counts ONLY pending verifications that need admin action
         // Uses the same getVerificationStatus logic as ResidentsVerificationTable
-        axiosInstance.get('/admin/residents-users', {
+        (user?.role === 'admin' || hasModuleAccess('residents'))
+        ? axiosInstance.get('/admin/residents-users', {
           timeout: 20000, // 20 second timeout - increased for slow backend
           params: {
             per_page: 100, // Request more records for accurate count
@@ -502,10 +499,12 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
             console.error('Error fetching blotter requests count:', err);
           }
           return null;
-        }),
+        }).catch(() => null) : Promise.resolve(null),
         
         // Fetch pending asset requests count (use efficient endpoint)
-        axiosInstance.get('/asset-requests/status-counts', {
+        // Only fetch if user has inventory module access
+        (user?.role === 'admin' || hasModuleAccess('inventory'))
+        ? axiosInstance.get('/asset-requests/status-counts', {
           timeout: 15000 // 15 second timeout - increased for slow backend
         }).then(response => {
           const statusCounts = response.data || {};
@@ -530,8 +529,7 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
               console.error('Error fetching asset requests count:', altErr);
             }
             return null;
-          });
-        })
+          }).catch(() => null) : Promise.resolve(null)
       ];
       
       // Execute all fetches in parallel (use allSettled so one failure doesn't block others)
