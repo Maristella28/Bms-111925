@@ -1201,45 +1201,77 @@ const StaffManagement = () => {
                                 const initialPermissions = member.module_permissions || {};
                                 console.log('Opening permissions modal for:', member.name);
                                 console.log('Initial permissions:', JSON.stringify(initialPermissions, null, 2));
-                                console.log('Residents permissions:', JSON.stringify(initialPermissions.residents, null, 2));
-                                console.log('Main records nested:', JSON.stringify(initialPermissions.residents?.sub_permissions?.main_records, null, 2));
                                 
-                                // Ensure all nested permissions are initialized with default structure
-                                // First normalize, then merge with defaults to ensure all nested keys exist
-                                const normalizedPermissions = normalizePermissions(initialPermissions);
+                                // Check if permissions are in API format (flat keys) or UI format (nested structure)
+                                // API format has keys like "residentsRecords_main_records_view"
+                                // UI format has nested structure like { residents: { sub_permissions: { main_records: { sub_permissions: { view: true } } } } }
+                                const hasApiFormatKeys = Object.keys(initialPermissions).some(key => 
+                                  key.includes('_') && (key.includes('Records') || key.includes('Management') || key === 'dashboard')
+                                );
                                 
-                                // Ensure all nested permissions from default structure are present
+                                let uiPermissions;
+                                if (hasApiFormatKeys) {
+                                  // Data is in API format (flat keys), convert to UI format
+                                  console.log('Detected API format, converting to UI format');
+                                  uiPermissions = mapApiToUiPermissions(initialPermissions);
+                                } else {
+                                  // Data is already in UI format, use as-is
+                                  console.log('Detected UI format, using as-is');
+                                  uiPermissions = initialPermissions;
+                                }
+                                
+                                console.log('UI format permissions:', JSON.stringify(uiPermissions, null, 2));
+                                console.log('Residents permissions:', JSON.stringify(uiPermissions.residents, null, 2));
+                                console.log('Main records nested:', JSON.stringify(uiPermissions.residents?.sub_permissions?.main_records, null, 2));
+                                
+                                // Now ensure all nested permissions from default structure exist
+                                // This merges the existing values with the default structure
+                                const normalizedPermissions = JSON.parse(JSON.stringify(defaultPermissions)); // Start with defaults
+                                
+                                // Deep merge: preserve existing values, add missing keys from defaults
                                 Object.keys(defaultPermissions).forEach(uiKey => {
                                   const defaultPerm = defaultPermissions[uiKey];
+                                  const existingPerm = uiPermissions[uiKey];
+                                  
                                   if (defaultPerm.sub_permissions) {
+                                    // Has sub-permissions
+                                    normalizedPermissions[uiKey] = {
+                                      access: existingPerm?.access ?? false,
+                                      sub_permissions: {}
+                                    };
+                                    
                                     Object.keys(defaultPerm.sub_permissions).forEach(subKey => {
                                       const defaultSubPerm = defaultPerm.sub_permissions[subKey];
+                                      const existingSubPerm = existingPerm?.sub_permissions?.[subKey];
+                                      
                                       if (typeof defaultSubPerm === 'object' && defaultSubPerm.sub_permissions) {
-                                        // Ensure nested sub-permissions structure exists
-                                        if (!normalizedPermissions[uiKey]) {
-                                          normalizedPermissions[uiKey] = { access: false, sub_permissions: {} };
-                                        }
-                                        if (!normalizedPermissions[uiKey].sub_permissions) {
-                                          normalizedPermissions[uiKey].sub_permissions = {};
-                                        }
-                                        if (!normalizedPermissions[uiKey].sub_permissions[subKey]) {
-                                          normalizedPermissions[uiKey].sub_permissions[subKey] = { access: false, sub_permissions: {} };
-                                        }
-                                        if (!normalizedPermissions[uiKey].sub_permissions[subKey].sub_permissions) {
-                                          normalizedPermissions[uiKey].sub_permissions[subKey].sub_permissions = {};
-                                        }
-                                        // Ensure all nested keys from default exist
+                                        // Nested sub-permissions (e.g., main_records with edit/disable/view)
+                                        normalizedPermissions[uiKey].sub_permissions[subKey] = {
+                                          access: existingSubPerm?.access ?? false,
+                                          sub_permissions: {}
+                                        };
+                                        
+                                        // Preserve all nested permission values
                                         Object.keys(defaultSubPerm.sub_permissions).forEach(nestedKey => {
-                                          if (normalizedPermissions[uiKey].sub_permissions[subKey].sub_permissions[nestedKey] === undefined) {
-                                            normalizedPermissions[uiKey].sub_permissions[subKey].sub_permissions[nestedKey] = false;
-                                          }
+                                          const existingNestedValue = existingSubPerm?.sub_permissions?.[nestedKey];
+                                          normalizedPermissions[uiKey].sub_permissions[subKey].sub_permissions[nestedKey] = 
+                                            existingNestedValue !== undefined ? existingNestedValue : false;
                                         });
+                                      } else {
+                                        // Simple boolean sub-permission
+                                        normalizedPermissions[uiKey].sub_permissions[subKey] = 
+                                          existingSubPerm !== undefined ? existingSubPerm : false;
                                       }
                                     });
+                                  } else {
+                                    // Simple permission (like dashboard)
+                                    normalizedPermissions[uiKey] = {
+                                      access: existingPerm?.access ?? false
+                                    };
                                   }
                                 });
                                 
-                                console.log('Normalized permissions:', JSON.stringify(normalizedPermissions, null, 2));
+                                console.log('Final normalized permissions:', JSON.stringify(normalizedPermissions, null, 2));
                                 console.log('Residents main_records after normalization:', JSON.stringify(normalizedPermissions.residents?.sub_permissions?.main_records, null, 2));
                                 
                                 setEditingStaff({
