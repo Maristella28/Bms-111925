@@ -129,7 +129,34 @@ const HouseholdSurveySystem = ({ household, onClose, onSurveySent }) => {
 
       const response = await api.post('/admin/household-surveys/send', payload);
       
-      setSuccess(`Survey sent successfully via ${notificationMethod}!`);
+      // If print method, download the PDF automatically
+      if (notificationMethod === 'print' && response.data.data?.id) {
+        try {
+          // Download the PDF
+          const pdfResponse = await api.get(`/admin/household-surveys/${response.data.data.id}/download-pdf`, {
+            responseType: 'blob',
+          });
+          
+          // Create a blob URL and trigger download
+          const blob = new Blob([pdfResponse.data], { type: 'application/pdf' });
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `household-survey-${household?.household_no || 'unknown'}-${response.data.data.id}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          
+          setSuccess('Survey form generated and downloaded successfully!');
+        } catch (pdfErr) {
+          console.error('Failed to download PDF:', pdfErr);
+          setSuccess('Survey created successfully, but PDF download failed. You can download it later.');
+        }
+      } else {
+        setSuccess(`Survey sent successfully via ${notificationMethod}!`);
+      }
+      
       fetchSurveyHistory();
       
       if (onSurveySent) {

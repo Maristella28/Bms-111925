@@ -456,5 +456,47 @@ class HouseholdSurveyController extends Controller
             ], 404);
         }
     }
+
+    /**
+     * Generate and download PDF survey form
+     */
+    public function downloadSurveyPdf($id)
+    {
+        try {
+            $survey = HouseholdSurvey::with(['household', 'sentBy'])->findOrFail($id);
+            $household = $survey->household;
+
+            // Prepare data for PDF template
+            $data = [
+                'survey' => $survey,
+                'household' => $household,
+                'survey_type_label' => $survey->survey_type_label,
+                'questions' => $survey->questions,
+                'custom_message' => $survey->custom_message,
+                'expires_at' => $survey->expires_at ? $survey->expires_at->format('F j, Y') : null,
+                'sent_at' => $survey->sent_at ? $survey->sent_at->format('F j, Y') : null,
+            ];
+
+            // Generate PDF using DomPDF
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('surveys.household-survey-form', $data);
+
+            // Generate filename
+            $filename = sprintf(
+                'household-survey-%s-%s-%d.pdf',
+                str_replace(' ', '-', strtolower($survey->survey_type_label)),
+                $household->household_no ?? 'unknown',
+                $survey->id
+            );
+
+            // Return PDF as download
+            return $pdf->download($filename);
+        } catch (\Exception $e) {
+            Log::error('Failed to generate survey PDF: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate survey PDF: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
 }
 

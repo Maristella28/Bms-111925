@@ -154,6 +154,7 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'staff', 'sanitize'])->group
     Route::get('/household-surveys/statistics', [\App\Http\Controllers\HouseholdSurveyController::class, 'getStatistics']);
     Route::post('/household-surveys/send', [\App\Http\Controllers\HouseholdSurveyController::class, 'sendSurvey']);
     Route::get('/household-surveys/{id}', [\App\Http\Controllers\HouseholdSurveyController::class, 'show']);
+    Route::get('/household-surveys/{id}/download-pdf', [\App\Http\Controllers\HouseholdSurveyController::class, 'downloadSurveyPdf']);
     
     // Household Survey Schedule Routes
     Route::get('/household-survey-schedules', [\App\Http\Controllers\HouseholdSurveyScheduleController::class, 'index']);
