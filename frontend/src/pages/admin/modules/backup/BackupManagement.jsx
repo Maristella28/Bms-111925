@@ -15,11 +15,94 @@ import {
   ChartBarIcon,
   ShieldCheckIcon,
   CheckCircleIcon,
+  XMarkIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import {
   ArrowDownTrayIcon as ArrowDownTrayIconSolid,
   ServerIcon as ServerIconSolid,
 } from '@heroicons/react/24/solid';
+
+// Modal Component for Success/Error Messages
+const Modal = ({ isOpen, onClose, type, title, message, details }) => {
+  if (!isOpen) return null;
+
+  const getModalStyles = () => {
+    switch (type) {
+      case 'success':
+        return {
+          bg: 'from-green-500 to-emerald-600',
+          iconBg: 'bg-green-100',
+          iconColor: 'text-green-600',
+          buttonBg: 'from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700',
+          borderColor: 'border-green-200'
+        };
+      case 'error':
+        return {
+          bg: 'from-red-500 to-rose-600',
+          iconBg: 'bg-red-100',
+          iconColor: 'text-red-600',
+          buttonBg: 'from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700',
+          borderColor: 'border-red-200'
+        };
+      default:
+        return {
+          bg: 'from-blue-500 to-indigo-600',
+          iconBg: 'bg-blue-100',
+          iconColor: 'text-blue-600',
+          buttonBg: 'from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700',
+          borderColor: 'border-blue-200'
+        };
+    }
+  };
+
+  const styles = getModalStyles();
+  const Icon = type === 'success' ? CheckCircleIcon : ExclamationTriangleIcon;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full transform transition-all">
+        {/* Header with gradient */}
+        <div className={`bg-gradient-to-r ${styles.bg} rounded-t-2xl p-6`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`${styles.iconBg} rounded-full p-3`}>
+                <Icon className={`w-6 h-6 ${styles.iconColor}`} />
+              </div>
+              <h3 className="text-xl font-bold text-white">{title}</h3>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-white hover:bg-white/20 rounded-full p-1 transition-colors"
+            >
+              <XMarkIcon className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="p-6">
+          <p className="text-gray-700 mb-4">{message}</p>
+          
+          {details && (
+            <div className={`mt-4 p-4 bg-gray-50 rounded-lg border ${styles.borderColor} max-h-60 overflow-y-auto`}>
+              <p className="text-sm text-gray-600 whitespace-pre-wrap font-mono">{details}</p>
+            </div>
+          )}
+
+          <div className="mt-6 flex justify-end">
+            <button
+              onClick={onClose}
+              className={`px-6 py-2.5 bg-gradient-to-r ${styles.buttonBg} text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200`}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const BackupManagement = () => {
   const [backups, setBackups] = useState([]);
@@ -28,6 +111,7 @@ const BackupManagement = () => {
   const [statistics, setStatistics] = useState(null);
   const [selectedType, setSelectedType] = useState('all');
   const [deletingId, setDeletingId] = useState(null);
+  const [modal, setModal] = useState({ isOpen: false, type: 'success', title: '', message: '', details: '' });
 
   // Fetch backups list
   const fetchBackups = async () => {
@@ -71,15 +155,39 @@ const BackupManagement = () => {
       });
 
       if (response.data.success) {
+        // Show success modal
+        setModal({
+          isOpen: true,
+          type: 'success',
+          title: 'Backup Created Successfully!',
+          message: `Your ${selectedType === 'all' ? 'backup' : selectedType + ' backup'} has been created successfully.`,
+          details: response.data.output || ''
+        });
         toast.success('Backup created successfully!');
         // Refresh backups list and statistics
         await fetchBackups();
         await fetchStatistics();
       } else {
+        // Show error modal
+        setModal({
+          isOpen: true,
+          type: 'error',
+          title: 'Backup Failed',
+          message: response.data.message || 'Backup failed. Please check the details below.',
+          details: response.data.output || ''
+        });
         toast.error(response.data.message || 'Backup failed');
       }
     } catch (error) {
       console.error('Error running backup:', error);
+      // Show error modal
+      setModal({
+        isOpen: true,
+        type: 'error',
+        title: 'Backup Failed',
+        message: error.response?.data?.message || 'Failed to create backup. Please try again.',
+        details: error.response?.data?.output || error.message || ''
+      });
       toast.error(error.response?.data?.message || 'Failed to create backup');
     } finally {
       setBackingUp(false);
@@ -188,6 +296,17 @@ const BackupManagement = () => {
     <>
       <Navbar />
       <Sidebar />
+      
+      {/* Success/Error Modal */}
+      <Modal
+        isOpen={modal.isOpen}
+        onClose={() => setModal({ ...modal, isOpen: false })}
+        type={modal.type}
+        title={modal.title}
+        message={modal.message}
+        details={modal.details}
+      />
+
       <main className="bg-gradient-to-br from-green-50 to-emerald-50 min-h-screen ml-0 lg:ml-64 pt-20 lg:pt-36 px-4 pb-16 font-sans">
         <div className="w-full max-w-7xl mx-auto space-y-8">
           {/* Header Section */}
