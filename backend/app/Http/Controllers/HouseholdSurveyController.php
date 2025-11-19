@@ -474,24 +474,6 @@ class HouseholdSurveyController extends Controller
                 ], 404);
             }
 
-            // Check if template exists
-            $templatePath = 'surveys.household-survey-form';
-            $viewPath = resource_path('views/surveys/household-survey-form.blade.php');
-            
-            if (!view()->exists($templatePath)) {
-                Log::error('Survey PDF template not found', [
-                    'template' => $templatePath,
-                    'view_path' => $viewPath,
-                    'file_exists' => file_exists($viewPath),
-                    'views_directory' => resource_path('views'),
-                ]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'PDF template not found. Please contact support.',
-                    'error_details' => config('app.debug') ? "Template path: {$templatePath}, File path: {$viewPath}" : null,
-                ], 500);
-            }
-
             // Check if DomPDF is available
             if (!class_exists('\Barryvdh\DomPDF\Facade\Pdf')) {
                 Log::error('DomPDF not available');
@@ -500,6 +482,9 @@ class HouseholdSurveyController extends Controller
                     'message' => 'PDF generation service is not available.',
                 ], 500);
             }
+
+            // Template path
+            $templatePath = 'surveys.household-survey-form';
 
             // Prepare data for PDF template
             $data = [
@@ -518,30 +503,35 @@ class HouseholdSurveyController extends Controller
                 'survey_type' => $survey->survey_type,
                 'questions_count' => count($data['questions']),
                 'template_path' => $templatePath,
-                'view_exists' => view()->exists($templatePath),
+                'view_file_exists' => file_exists(resource_path('views/surveys/household-survey-form.blade.php')),
             ]);
 
-            // Try to render the view first to catch any errors
+            // Generate PDF using DomPDF
             try {
-                $html = view($templatePath, $data)->render();
-                if (empty($html)) {
-                    throw new \Exception('View rendered empty content');
-                }
-            } catch (\Exception $viewErr) {
-                Log::error('Failed to render survey view', [
+                $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView($templatePath, $data);
+                $pdf->setPaper('A4', 'portrait');
+            } catch (\Exception $pdfErr) {
+                Log::error('Failed to generate PDF', [
                     'survey_id' => $id,
-                    'error' => $viewErr->getMessage(),
-                    'trace' => $viewErr->getTraceAsString(),
+                    'template' => $templatePath,
+                    'error' => $pdfErr->getMessage(),
+                    'error_class' => get_class($pdfErr),
+                    'trace' => $pdfErr->getTraceAsString(),
                 ]);
+                
+                $errorMessage = 'Failed to generate PDF.';
+                if (str_contains($pdfErr->getMessage(), 'not found') || str_contains($pdfErr->getMessage(), 'View')) {
+                    $errorMessage = 'PDF template not found. Please contact support.';
+                } elseif (config('app.debug')) {
+                    $errorMessage = 'Failed to generate PDF: ' . $pdfErr->getMessage();
+                }
+                
                 return response()->json([
                     'success' => false,
-                    'message' => 'Failed to render PDF template: ' . $viewErr->getMessage(),
+                    'message' => $errorMessage,
+                    'error_details' => config('app.debug') ? $pdfErr->getMessage() : null,
                 ], 500);
             }
-
-            // Generate PDF using DomPDF
-            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView($templatePath, $data);
-            $pdf->setPaper('A4', 'portrait');
 
             // Generate PDF content
             $pdfContent = $pdf->output();
