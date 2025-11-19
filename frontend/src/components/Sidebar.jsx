@@ -377,11 +377,14 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
          Object.keys(user.module_permissions).length > 1 && // More than just fallback dashboard
          (user.module_permissions.dashboard === true || user.permissions?.dashboard === true));
       
+      // Use role-appropriate endpoint: admin uses /admin/dashboard, staff uses /staff/dashboard
+      const dashboardEndpoint = user?.role === 'admin' ? '/admin/dashboard' : '/staff/dashboard';
+      
       const dashboardPromise = hasDashboardAccess
-        ? axiosInstance.get('/admin/dashboard', {
+        ? axiosInstance.get(dashboardEndpoint, {
         timeout: 20000 // 20 second timeout - increased to handle slow database queries
       }).then(response => {
-        const stats = response.data?.statistics || {};
+        const stats = response.data?.statistics || response.data || {};
         
         // Use dashboard stats for estimated counts (but don't update state yet)
         if (stats.pending_requests) {
@@ -405,40 +408,44 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
       const fetchPromises = [
         // Fetch pending document requests count (ONLY new requests needing approval)
         // Only fetch if user has documents module access
+        // Use role-appropriate endpoint: admin uses /admin/document-requests, staff uses /staff/document-requests
         (user?.role === 'admin' || hasModuleAccess('documents'))
-        ? axiosInstance.get('/admin/document-requests', {
-          timeout: 15000 // 15 second timeout - increased for slow backend
-        }).then(response => {
-          const requests = extractArrayFromResponse(response.data, ['document_requests']);
-          // Count ONLY pending requests - these are new requests needing approval
-          // This matches the requirement: "Only new requests needing approval in notification badges"
-          const pendingDocRequests = countPendingDocumentRequests(requests);
-          
-          // Debug log in development
-          if (process.env.NODE_ENV === 'development') {
-            const statusCounts = requests.reduce((acc, r) => {
-              const status = (r.status?.toLowerCase() || 'unknown').trim();
-              acc[status] = (acc[status] || 0) + 1;
-              return acc;
-            }, {});
-            const nonPaidCount = countNonPaidDocumentRequests(requests);
-            console.log('📄 Document Requests Count:', {
-              total: requests.length,
-              pending: pendingDocRequests, // What badge shows (actionable items)
-              nonPaid: nonPaidCount, // What tab shows (all in workflow)
-              paid: requests.filter(r => (r.payment_status || r.paymentStatus) === 'paid').length,
-              statusBreakdown: statusCounts
-            });
-          }
-          
-          return { type: 'documents', count: pendingDocRequests };
-        }).catch(err => {
-          // Silently fail - don't spam console with timeout errors
-          if (err.code !== 'ECONNABORTED') {
-            console.error('Error fetching document requests count:', err);
-          }
-          return null;
-        }).catch(() => null) : Promise.resolve(null),
+        ? (() => {
+            const documentEndpoint = user?.role === 'admin' ? '/admin/document-requests' : '/staff/document-requests';
+            return axiosInstance.get(documentEndpoint, {
+              timeout: 15000 // 15 second timeout - increased for slow backend
+            }).then(response => {
+              const requests = extractArrayFromResponse(response.data, ['document_requests']);
+              // Count ONLY pending requests - these are new requests needing approval
+              // This matches the requirement: "Only new requests needing approval in notification badges"
+              const pendingDocRequests = countPendingDocumentRequests(requests);
+              
+              // Debug log in development
+              if (process.env.NODE_ENV === 'development') {
+                const statusCounts = requests.reduce((acc, r) => {
+                  const status = (r.status?.toLowerCase() || 'unknown').trim();
+                  acc[status] = (acc[status] || 0) + 1;
+                  return acc;
+                }, {});
+                const nonPaidCount = countNonPaidDocumentRequests(requests);
+                console.log('📄 Document Requests Count:', {
+                  total: requests.length,
+                  pending: pendingDocRequests, // What badge shows (actionable items)
+                  nonPaid: nonPaidCount, // What tab shows (all in workflow)
+                  paid: requests.filter(r => (r.payment_status || r.paymentStatus) === 'paid').length,
+                  statusBreakdown: statusCounts
+                });
+              }
+              
+              return { type: 'documents', count: pendingDocRequests };
+            }).catch(err => {
+              // Silently fail - don't spam console with timeout errors
+              if (err.code !== 'ECONNABORTED') {
+                console.error('Error fetching document requests count:', err);
+              }
+              return null;
+            }).catch(() => null);
+          })() : Promise.resolve(null),
         
         // Fetch pending verification count (matches ResidentsVerificationTable.jsx logic)
         // Only fetch if user has residents module access
@@ -495,7 +502,8 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
         
         // Fetch pending blotter requests count
         // Only fetch if user has blotter module access
-        (user?.role === 'admin' || hasModuleAccess('blotter'))
+        // NOTE: /admin/blotter-requests is admin-only, so skip for staff users
+        (user?.role === 'admin' && hasModuleAccess('blotter'))
         ? axiosInstance.get('/admin/blotter-requests', {
           timeout: 15000 // 15 second timeout - increased for slow backend
         }).then(response => {
