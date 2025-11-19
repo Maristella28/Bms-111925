@@ -466,35 +466,100 @@ class HouseholdSurveyController extends Controller
             $survey = HouseholdSurvey::with(['household', 'sentBy'])->findOrFail($id);
             $household = $survey->household;
 
+            if (!$household) {
+                Log::error('Household not found for survey', ['survey_id' => $id]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Household not found for this survey.',
+                ], 404);
+            }
+
+            // Check if template exists
+            if (!view()->exists('surveys.household-survey-form')) {
+                Log::error('Survey PDF template not found', ['template' => 'surveys.household-survey-form']);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'PDF template not found. Please contact support.',
+                ], 500);
+            }
+
+            // Check if DomPDF is available
+            if (!class_exists('\Barryvdh\DomPDF\Facade\Pdf')) {
+                Log::error('DomPDF not available');
+                return response()->json([
+                    'success' => false,
+                    'message' => 'PDF generation service is not available.',
+                ], 500);
+            }
+
             // Prepare data for PDF template
             $data = [
                 'survey' => $survey,
                 'household' => $household,
-                'survey_type_label' => $survey->survey_type_label,
-                'questions' => $survey->questions,
-                'custom_message' => $survey->custom_message,
+                'survey_type_label' => $survey->survey_type_label ?? 'Unknown Survey Type',
+                'questions' => $survey->questions ?? [],
+                'custom_message' => $survey->custom_message ?? null,
                 'expires_at' => $survey->expires_at ? $survey->expires_at->format('F j, Y') : null,
                 'sent_at' => $survey->sent_at ? $survey->sent_at->format('F j, Y') : null,
             ];
 
+            Log::info('Generating survey PDF', [
+                'survey_id' => $id,
+                'household_id' => $household->id,
+                'survey_type' => $survey->survey_type,
+                'questions_count' => count($data['questions']),
+            ]);
+
             // Generate PDF using DomPDF
             $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('surveys.household-survey-form', $data);
+            $pdf->setPaper('A4', 'portrait');
+
+            // Generate PDF content
+            $pdfContent = $pdf->output();
+
+            if (empty($pdfContent)) {
+                Log::error('PDF content is empty after generation', ['survey_id' => $id]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'PDF generation failed. Template may have rendering errors.',
+                ], 500);
+            }
 
             // Generate filename
             $filename = sprintf(
                 'household-survey-%s-%s-%d.pdf',
-                str_replace(' ', '-', strtolower($survey->survey_type_label)),
+                str_replace(' ', '-', strtolower($survey->survey_type_label ?? 'survey')),
                 $household->household_no ?? 'unknown',
                 $survey->id
             );
 
+            Log::info('Survey PDF generated successfully', [
+                'survey_id' => $id,
+                'filename' => $filename,
+                'pdf_size' => strlen($pdfContent),
+            ]);
+
             // Return PDF as download
-            return $pdf->download($filename);
-        } catch (\Exception $e) {
-            Log::error('Failed to generate survey PDF: ' . $e->getMessage());
+            return response($pdfContent)
+                ->header('Content-Type', 'application/pdf')
+                ->header('Content-Disposition', 'attachment; filename="' . $filename . '"')
+                ->header('Content-Length', strlen($pdfContent));
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            Log::error('Survey not found for PDF generation', ['survey_id' => $id]);
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to generate survey PDF: ' . $e->getMessage(),
+                'message' => 'Survey not found.',
+            ], 404);
+        } catch (\Exception $e) {
+            Log::error('Failed to generate survey PDF', [
+                'survey_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate survey PDF: ' . ($e->getMessage() ?: 'Unknown error occurred'),
+                'error_details' => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
     }

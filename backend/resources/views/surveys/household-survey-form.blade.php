@@ -154,7 +154,7 @@
         <h1>BARANGAY E-GOVERNANCE SYSTEM</h1>
         <h2>Household Verification Survey Form</h2>
         <div class="survey-type-badge">
-            {{ $survey_type_label }}
+            {{ $survey_type_label ?? 'Survey Form' }}
         </div>
     </div>
 
@@ -205,17 +205,21 @@
             Please answer each question below. Provide detailed responses in the space provided.
         </p>
 
-        @foreach($questions as $index => $question)
-        <div class="question-item">
-            <div class="question-text">
-                <span class="question-number">{{ $index + 1 }}.</span>
-                {{ $question }}
+        @if(!empty($questions) && is_array($questions))
+            @foreach($questions as $index => $question)
+            <div class="question-item">
+                <div class="question-text">
+                    <span class="question-number">{{ $index + 1 }}.</span>
+                    {{ $question ?? 'Question not available' }}
+                </div>
+                <div class="answer-box">
+                    &nbsp;
+                </div>
             </div>
-            <div class="answer-box">
-                &nbsp;
-            </div>
-        </div>
-        @endforeach
+            @endforeach
+        @else
+            <p style="color: #ef4444; font-style: italic;">No questions available for this survey.</p>
+        @endif
     </div>
 
     @if($expires_at)
