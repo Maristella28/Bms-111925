@@ -246,65 +246,124 @@ const StaffManagement = () => {
           }
         }
       } else if (parts.length >= 3) {
-        // 3+ part key: e.g., "residentsRecords_main_records_view"
-        // When split by "_", this becomes: ["residentsRecords", "main", "records", "view"] (4 parts)
-        // We need: subKey = "main_records", nestedKey = "view"
+        // 3+ part key: e.g., "residentsRecords_main_records_view" or "residentsRecords_main_records"
+        // When split by "_", these become:
+        // - ["residentsRecords", "main", "records", "view"] (4 parts) → subKey = "main_records", nestedKey = "view"
+        // - ["residentsRecords", "main", "records"] (3 parts) → subKey = "main_records" (set access)
         
         // Strategy: Try different combinations to find the correct subKey
         // Check available subKeys in the default structure
         const availableSubKeys = Object.keys(base[uiKey].sub_permissions || {});
         let found = false;
         
-        // Try combinations: for "residentsRecords_main_records_view"
-        // Try: "main" (parts[1]), "main_records" (parts[1]_parts[2]), etc.
-        for (let i = 1; i < parts.length - 1; i++) {
-          const possibleSubKey = parts.slice(1, i + 1).join('_'); // Combine parts[1] to parts[i]
-          const possibleNestedKey = parts.slice(i + 1).join('_'); // Rest is nestedKey
-          
-          // Check if this subKey exists in the structure
+        // First, check if this is a 3-part key that represents a nested sub-permission's access
+        // e.g., "residentsRecords_main_records" → should set main_records.access = true
+        if (parts.length === 3) {
+          const possibleSubKey = parts.slice(1).join('_'); // e.g., "main_records"
           if (availableSubKeys.includes(possibleSubKey)) {
             const subPerm = base[uiKey].sub_permissions[possibleSubKey];
-            
-            // Check if it's an object with sub_permissions (nested structure)
+            // Check if it's a nested sub-permission (has sub_permissions)
             if (typeof subPerm === 'object' && subPerm !== null && subPerm.sub_permissions) {
-              // Check if the nestedKey exists in the default structure
-              const defaultNestedKeys = Object.keys(subPerm.sub_permissions);
-              if (defaultNestedKeys.includes(possibleNestedKey)) {
-                // Found the correct mapping!
-                subPerm.sub_permissions[possibleNestedKey] = normalizedValue;
-                
-                // Debug log for residents
-                if (uiKey === 'residents' && possibleSubKey === 'main_records') {
-                  console.log(`✅ mapApiToUiPermissions: Setting ${possibleSubKey}.${possibleNestedKey} = ${normalizedValue}`, {
-                    apiKey,
-                    uiKey,
-                    subKey: possibleSubKey,
-                    nestedKey: possibleNestedKey,
-                    value,
-                    normalizedValue
-                  });
+              // It's a nested sub-permission, set its access
+              subPerm.access = normalizedValue;
+              if (normalizedValue) {
+                base[uiKey].access = true;
+              }
+              console.log(`✅ mapApiToUiPermissions: Setting nested sub-permission access ${uiKey}.${possibleSubKey} = ${normalizedValue}`, {
+                apiKey,
+                uiKey,
+                subKey: possibleSubKey,
+                value,
+                normalizedValue
+              });
+              found = true;
+            }
+          }
+        }
+        
+        // If not found and we have 4+ parts, try to find nested permissions
+        // Try combinations: for "residentsRecords_main_records_view"
+        // Try: "main" (parts[1]), "main_records" (parts[1]_parts[2]), etc.
+        if (!found && parts.length >= 4) {
+          for (let i = 1; i < parts.length - 1; i++) {
+            const possibleSubKey = parts.slice(1, i + 1).join('_'); // Combine parts[1] to parts[i]
+            const possibleNestedKey = parts.slice(i + 1).join('_'); // Rest is nestedKey
+            
+            // Check if this subKey exists in the structure
+            if (availableSubKeys.includes(possibleSubKey)) {
+              const subPerm = base[uiKey].sub_permissions[possibleSubKey];
+              
+              // Check if it's an object with sub_permissions (nested structure)
+              if (typeof subPerm === 'object' && subPerm !== null && subPerm.sub_permissions) {
+                // Check if the nestedKey exists in the default structure
+                const defaultNestedKeys = Object.keys(subPerm.sub_permissions);
+                if (defaultNestedKeys.includes(possibleNestedKey)) {
+                  // Found the correct mapping!
+                  subPerm.sub_permissions[possibleNestedKey] = normalizedValue;
+                  
+                  // Debug log for residents
+                  if (uiKey === 'residents' && possibleSubKey === 'main_records') {
+                    console.log(`✅ mapApiToUiPermissions: Setting ${possibleSubKey}.${possibleNestedKey} = ${normalizedValue}`, {
+                      apiKey,
+                      uiKey,
+                      subKey: possibleSubKey,
+                      nestedKey: possibleNestedKey,
+                      value,
+                      normalizedValue
+                    });
+                  }
+                  
+                  // If nested permission is true, ensure all parent permissions are also true
+                  if (normalizedValue) {
+                    subPerm.access = true;
+                    base[uiKey].access = true;
+                  }
+                  
+                  found = true;
+                  break;
                 }
-                
-                // If nested permission is true, ensure all parent permissions are also true
-                if (normalizedValue) {
-                  subPerm.access = true;
-                  base[uiKey].access = true;
-                }
-                
-                found = true;
-                break;
               }
             }
           }
         }
         
         if (!found) {
-          console.warn(`⚠️ mapApiToUiPermissions: Could not map ${apiKey}`, {
-            parts,
-            availableSubKeys,
-            uiKey,
-            triedCombinations: parts.slice(1).map((_, i) => parts.slice(1, i + 2).join('_'))
-          });
+          // Fallback: Check if the remaining parts form a simple sub-permission key
+          // For keys like "residentsRecords_disabled_residents" or "documentsRecords_document_requests"
+          // Try combining all parts after the first one as a simple sub-permission
+          const possibleSimpleSubKey = parts.slice(1).join('_'); // e.g., "disabled_residents", "document_requests"
+          
+          if (availableSubKeys.includes(possibleSimpleSubKey)) {
+            const subPerm = base[uiKey].sub_permissions[possibleSimpleSubKey];
+            
+            // Check if it's a simple boolean sub-permission (not nested)
+            if (typeof subPerm !== 'object' || subPerm === null || !subPerm.sub_permissions) {
+              // It's a simple boolean sub-permission!
+              base[uiKey].sub_permissions[possibleSimpleSubKey] = normalizedValue;
+              if (normalizedValue) {
+                base[uiKey].access = true;
+              }
+              
+              console.log(`✅ mapApiToUiPermissions (fallback): Setting simple sub-permission ${uiKey}.${possibleSimpleSubKey} = ${normalizedValue}`, {
+                apiKey,
+                uiKey,
+                subKey: possibleSimpleSubKey,
+                value,
+                normalizedValue
+              });
+              found = true;
+            }
+          }
+          
+          if (!found) {
+            console.warn(`⚠️ mapApiToUiPermissions: Could not map ${apiKey}`, {
+              parts,
+              availableSubKeys,
+              uiKey,
+              triedCombinations: parts.slice(1).map((_, i) => parts.slice(1, i + 2).join('_')),
+              triedSimpleKey: possibleSimpleSubKey
+            });
+          }
         }
       }
     });
