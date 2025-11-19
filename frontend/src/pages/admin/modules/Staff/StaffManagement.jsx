@@ -191,12 +191,39 @@ const StaffManagement = () => {
     
     console.log('Mapping API to UI permissions:', { source, defaultPermissions });
     
+    // Debug: Log all residents-related keys
+    const residentsKeys = Object.keys(source).filter(k => k.includes('residents'));
+    console.log('🔍 Residents-related keys in source:', residentsKeys);
+    
     // Process all keys in a single pass, handling them in order of complexity
-    // 1. Main module keys (no underscores) - e.g., "dashboard", "residentsRecords"
-    // 2. 2-part keys (one underscore) - e.g., "residentsRecords_main_records"
-    // 3. 3-part keys (two underscores) - e.g., "residentsRecords_main_records_view"
+    // IMPORTANT: Process 4+ part keys (nested permissions) FIRST, then 3-part keys (parent access)
+    // This ensures nested permissions are set before parent access flags
+    
+    // Separate keys by complexity
+    const mainModuleKeys = [];
+    const twoPartKeys = [];
+    const threePartKeys = [];
+    const fourPlusPartKeys = [];
     
     Object.entries(source).forEach(([apiKey, value]) => {
+      if (apiKey === 'dashboard' || !apiKey.includes('_')) {
+        mainModuleKeys.push([apiKey, value]);
+      } else {
+        const parts = apiKey.split('_');
+        if (parts.length === 2) {
+          twoPartKeys.push([apiKey, value]);
+        } else if (parts.length === 3) {
+          threePartKeys.push([apiKey, value]);
+        } else if (parts.length >= 4) {
+          fourPlusPartKeys.push([apiKey, value]);
+        }
+      }
+    });
+    
+    // Process in order: main modules, 4+ part keys (nested), 3-part keys (parent access), 2-part keys
+    const orderedKeys = [...mainModuleKeys, ...fourPlusPartKeys, ...threePartKeys, ...twoPartKeys];
+    
+    orderedKeys.forEach(([apiKey, value]) => {
       const normalizedValue = value === true || value === 1 || value === '1' || value === 'true';
       
       // Handle dashboard specially (it maps to itself)
@@ -291,12 +318,15 @@ const StaffManagement = () => {
         }
         
         // If not found and we have 4+ parts, try to find nested permissions
-        // Try combinations: for "residentsRecords_main_records_view"
-        // Try: "main" (parts[1]), "main_records" (parts[1]_parts[2]), etc.
+        // For "residentsRecords_main_records_view" → ["residentsRecords", "main", "records", "view"]
+        // We need to find: subKey = "main_records", nestedKey = "view"
+        // Strategy: Try all combinations from the end backwards
         if (!found && parts.length >= 4) {
-          for (let i = 1; i < parts.length - 1; i++) {
-            const possibleSubKey = parts.slice(1, i + 1).join('_'); // Combine parts[1] to parts[i]
-            const possibleNestedKey = parts.slice(i + 1).join('_'); // Rest is nestedKey
+          // Try different ways to split: last part is always the nestedKey
+          // Try: subKey = parts[1..n-1], nestedKey = parts[n]
+          for (let i = parts.length - 2; i >= 1; i--) {
+            const possibleSubKey = parts.slice(1, i + 1).join('_'); // e.g., "main_records"
+            const possibleNestedKey = parts.slice(i + 1).join('_'); // e.g., "view" or "records_view"
             
             // Check if this subKey exists in the structure
             if (availableSubKeys.includes(possibleSubKey)) {
@@ -318,15 +348,18 @@ const StaffManagement = () => {
                       subKey: possibleSubKey,
                       nestedKey: possibleNestedKey,
                       value,
-                      normalizedValue
+                      normalizedValue,
+                      parts,
+                      availableSubKeys,
+                      defaultNestedKeys
                     });
                   }
           
-          // If nested permission is true, ensure all parent permissions are also true
-          if (normalizedValue) {
+                  // If nested permission is true, ensure all parent permissions are also true
+                  if (normalizedValue) {
                     subPerm.access = true;
-            base[uiKey].access = true;
-          }
+                    base[uiKey].access = true;
+                  }
                   
                   found = true;
                   break;
@@ -377,7 +410,17 @@ const StaffManagement = () => {
       }
     });
     
+    // Debug: Log the final mapped result, especially for residents
     console.log('Mapped API to UI permissions result:', base);
+    if (base.residents?.sub_permissions?.main_records) {
+      console.log('✅ Final residents.main_records after mapping:', {
+        access: base.residents.sub_permissions.main_records.access,
+        edit: base.residents.sub_permissions.main_records.sub_permissions?.edit,
+        disable: base.residents.sub_permissions.main_records.sub_permissions?.disable,
+        view: base.residents.sub_permissions.main_records.sub_permissions?.view,
+        allNested: base.residents.sub_permissions.main_records.sub_permissions
+      });
+    }
     return base;
   };
 
