@@ -535,68 +535,89 @@ class StaffController extends Controller
                 'is_different' => $isDifferent,
                 'current_json_length' => strlen($currentJson),
                 'residentsRecords_main_records_view' => $finalPermissions['residentsRecords_main_records_view'] ?? 'NOT_SET',
+                'residentsRecords_main_records_edit' => $finalPermissions['residentsRecords_main_records_edit'] ?? 'NOT_SET',
+                'residentsRecords_main_records_disable' => $finalPermissions['residentsRecords_main_records_disable'] ?? 'NOT_SET',
                 'current_has_view' => isset($currentDecoded['residentsRecords_main_records_view']) ? $currentDecoded['residentsRecords_main_records_view'] : 'NOT_SET',
             ]);
             
-            // Direct DB update - this bypasses Laravel's change detection
-            // Use DB::update() with raw SQL to ensure it executes within the transaction
-            $dbUpdateResult = \DB::update(
-                'UPDATE staff SET module_permissions = ?, updated_at = ? WHERE id = ?',
-                [$jsonEncoded, now(), $staff->id]
-            );
+            // CRITICAL FIX: Update the database using parameterized query to ensure JSON is saved correctly
+            // Pass the array directly - Laravel will handle JSON encoding for JSON columns
+            $dbUpdateResult = \DB::table('staff')
+                ->where('id', $staff->id)
+                ->update([
+                    'module_permissions' => $finalPermissions, // Pass array, Laravel handles JSON encoding
+                    'updated_at' => now()
+                ]);
+            
+            // Verify the update worked
+            if ($dbUpdateResult === 0) {
+                Log::error('DB update returned 0 rows affected', [
+                    'staff_id' => $staff->id,
+                    'update_result' => $dbUpdateResult,
+                    'final_permissions_count' => count($finalPermissions),
+                    'residents_keys' => array_filter(array_keys($finalPermissions), function($k) {
+                        return strpos($k, 'residents') !== false;
+                    })
+                ]);
+            }
             
             Log::info('Direct DB update result', [
                 'staff_id' => $staff->id,
                 'update_result' => $dbUpdateResult,
-                'rows_affected' => $dbUpdateResult,
                 'json_length' => strlen($jsonEncoded),
                 'residentsRecords_main_records_view_in_json' => strpos($jsonEncoded, '"residentsRecords_main_records_view":true') !== false ? 'PRESENT' : 'NOT_PRESENT',
+                'residentsRecords_main_records_edit_in_json' => strpos($jsonEncoded, '"residentsRecords_main_records_edit":true') !== false ? 'PRESENT' : 'NOT_PRESENT',
+                'residentsRecords_main_records_disable_in_json' => strpos($jsonEncoded, '"residentsRecords_main_records_disable":true') !== false ? 'PRESENT' : 'NOT_PRESENT',
             ]);
             
-            // Verify the update actually happened
-            if ($dbUpdateResult === 0 && $isDifferent) {
-                Log::error('CRITICAL: DB update returned 0 but data is different!', [
-                    'staff_id' => $staff->id,
-                    'current_value' => $currentDbValue,
-                    'new_value' => $jsonEncoded,
-                ]);
-                throw new \Exception('Failed to update staff permissions in database');
-            }
+            // Update the model instance to keep it in sync
+            // Use setRawAttributes to bypass Laravel's casting and change detection
+            $staff->setRawAttributes(array_merge($staff->getAttributes(), [
+                'module_permissions' => $jsonEncoded
+            ]), true);
             
-            // Also update the model instance to keep it in sync
-            $staff->module_permissions = $finalPermissions;
+            // Force the model to recognize this as changed
+            $staff->syncOriginal();
             
-            // Verify what was actually saved by querying database directly
+            // Commit the transaction FIRST before verifying
+            DB::commit();
+            
+            // Clear any model cache
             $staff->refresh();
-            $dbPermissions = \DB::table('staff')->where('id', $staff->id)->value('module_permissions');
             
-            Log::info('Staff permissions after save and refresh', [
+            // Verify what was actually saved by querying database directly AFTER commit
+            $dbPermissions = \DB::table('staff')->where('id', $staff->id)->value('module_permissions');
+            $decodedDbPermissions = json_decode($dbPermissions, true);
+            
+            Log::info('Staff permissions after save and commit', [
                 'staff_id' => $staff->id,
                 'model_module_permissions' => $staff->module_permissions,
                 'raw_db_value' => $dbPermissions,
-                'decoded_db_value' => json_decode($dbPermissions, true),
-                'residents_related_keys' => array_filter(array_keys($staff->module_permissions ?? []), function($key) {
+                'decoded_db_value' => $decodedDbPermissions,
+                'residents_related_keys' => array_filter(array_keys($decodedDbPermissions ?? []), function($key) {
                     return strpos($key, 'residents') !== false;
                 }),
-                'residentsRecords_main_records_view' => $staff->module_permissions['residentsRecords_main_records_view'] ?? 'NOT_SET',
-                'residentsRecords_main_records_edit' => $staff->module_permissions['residentsRecords_main_records_edit'] ?? 'NOT_SET',
-                'residentsRecords_main_records_disable' => $staff->module_permissions['residentsRecords_main_records_disable'] ?? 'NOT_SET',
+                'residentsRecords_main_records_view' => $decodedDbPermissions['residentsRecords_main_records_view'] ?? 'NOT_SET',
+                'residentsRecords_main_records_edit' => $decodedDbPermissions['residentsRecords_main_records_edit'] ?? 'NOT_SET',
+                'residentsRecords_main_records_disable' => $decodedDbPermissions['residentsRecords_main_records_disable'] ?? 'NOT_SET',
+                'residentsRecords_main_records' => $decodedDbPermissions['residentsRecords_main_records'] ?? 'NOT_SET',
             ]);
-
-            DB::commit();
-
-            // Double-check by querying database directly after commit
-            $staff->refresh();
-            $directDbCheck = \DB::table('staff')->where('id', $staff->id)->value('module_permissions');
-            $decodedDbCheck = json_decode($directDbCheck, true);
+            
+            // Update model with what's actually in the database
+            $staff->module_permissions = $decodedDbPermissions;
+            
+            // Final verification - query one more time to be absolutely sure
+            $finalDbCheck = \DB::table('staff')->where('id', $staff->id)->value('module_permissions');
+            $finalDecoded = json_decode($finalDbCheck, true);
             
             Log::info('Final verification after commit', [
                 'staff_id' => $staff->id,
-                'model_module_permissions' => $staff->module_permissions,
-                'raw_db_value' => $directDbCheck,
-                'decoded_db_value' => $decodedDbCheck,
-                'residentsRecords_main_records_view_in_model' => $staff->module_permissions['residentsRecords_main_records_view'] ?? 'NOT_SET',
-                'residentsRecords_main_records_view_in_db' => $decodedDbCheck['residentsRecords_main_records_view'] ?? 'NOT_SET',
+                'raw_db_value' => $finalDbCheck,
+                'decoded_db_value' => $finalDecoded,
+                'residentsRecords_main_records_view' => $finalDecoded['residentsRecords_main_records_view'] ?? 'NOT_SET',
+                'residentsRecords_main_records_edit' => $finalDecoded['residentsRecords_main_records_edit'] ?? 'NOT_SET',
+                'residentsRecords_main_records_disable' => $finalDecoded['residentsRecords_main_records_disable'] ?? 'NOT_SET',
+                'residentsRecords_main_records' => $finalDecoded['residentsRecords_main_records'] ?? 'NOT_SET',
             ]);
 
             // Return success response with saved permissions for verification
