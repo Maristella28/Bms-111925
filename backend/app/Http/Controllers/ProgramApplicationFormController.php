@@ -48,7 +48,15 @@ class ProgramApplicationFormController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
+        // Prepare validation data - ensure published_at is set if deadline is set
+        $validationData = $request->all();
+        if (isset($validationData['deadline']) && !empty($validationData['deadline']) && 
+            (!isset($validationData['published_at']) || empty($validationData['published_at']))) {
+            // If deadline is set but published_at is not, set published_at to now for validation
+            $validationData['published_at'] = now()->toISOString();
+        }
+        
+        $validator = Validator::make($validationData, [
             'program_id' => 'required|exists:programs,id',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -65,7 +73,8 @@ class ProgramApplicationFormController extends Controller
             'fields.*.is_required' => 'boolean',
             'fields.*.field_options' => 'nullable|array',
             'fields.*.validation_rules' => 'nullable|array',
-            'fields.*.sort_order' => 'integer|min:0'
+            'fields.*.sort_order' => 'integer|min:0',
+            'fields.*.is_active' => 'boolean'
         ]);
 
         if ($validator->fails()) {
@@ -78,11 +87,20 @@ class ProgramApplicationFormController extends Controller
 
         DB::beginTransaction();
         try {
+            // Prepare form data, handling null values properly
+            $formData = [
+                'program_id' => $request->program_id,
+                'title' => $request->title,
+                'description' => $request->description ?: null,
+                'status' => $request->status ?? 'draft',
+                'published_at' => $request->published_at ?: null,
+                'deadline' => $request->deadline ?: null,
+                'allow_multiple_submissions' => $request->boolean('allow_multiple_submissions'),
+                'form_settings' => $request->form_settings ?: null
+            ];
+            
             // Create the form
-            $form = ProgramApplicationForms::create($request->only([
-                'program_id', 'title', 'description', 'status', 'published_at',
-                'deadline', 'allow_multiple_submissions', 'form_settings'
-            ]));
+            $form = ProgramApplicationForms::create($formData);
 
             // Create form fields
             foreach ($request->fields as $fieldData) {
@@ -108,7 +126,7 @@ class ProgramApplicationFormController extends Controller
                         'field_name' => $fieldData['field_name'],
                         'field_label' => $fieldData['field_label'],
                         'field_type' => $fieldData['field_type'],
-                        'field_description' => $fieldData['field_description'] ?? null,
+                        'field_description' => !empty($fieldData['field_description']) ? $fieldData['field_description'] : null,
                         'is_required' => isset($fieldData['is_required']) ? (bool)$fieldData['is_required'] : false,
                         'field_options' => $fieldOptions,
                         'validation_rules' => $validationRules,

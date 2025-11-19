@@ -1032,7 +1032,7 @@ const ProgramDetails = () => {
             field_name: field.field_name || '',
             field_label: field.field_label || '',
             field_type: field.field_type || 'text',
-            field_description: field.field_description || null,
+            field_description: (field.field_description && field.field_description.trim()) ? field.field_description.trim() : null,
             is_required: field.is_required || false,
             field_options: fieldOptions,
             validation_rules: validationRules,
@@ -1055,9 +1055,10 @@ const ProgramDetails = () => {
             const publishedAt = new Date(deadlineDate);
             publishedAt.setMinutes(publishedAt.getMinutes() - 1);
             
-            // Ensure published_at is not in the future (use now if deadline is very close)
+            // Ensure published_at is not in the past (use now if deadline is very close or in the past)
             const now = new Date();
             if (publishedAt < now) {
+              // If calculated published_at is in the past, set it to now
               submitData.published_at = now.toISOString();
             } else {
               submitData.published_at = publishedAt.toISOString();
@@ -1067,11 +1068,17 @@ const ProgramDetails = () => {
           console.error('Error parsing deadline:', e);
           // If deadline parsing fails, don't include it
         }
+      } else {
+        // If no deadline, remove it from submitData
+        delete submitData.deadline;
       }
 
       // Handle published_at if status is published
       if (formData.status === 'published' && !submitData.published_at) {
         submitData.published_at = new Date().toISOString();
+      } else if (formData.status !== 'published' && !submitData.published_at) {
+        // If status is not published and no published_at is set, don't send it
+        delete submitData.published_at;
       }
 
       const response = await axiosInstance.post('/admin/program-application-forms', submitData);
@@ -1081,21 +1088,36 @@ const ProgramDetails = () => {
       setShowFormBuilderModal(false);
     } catch (error) {
       console.error('Error creating application form:', error);
+      console.error('Error response:', error.response);
       console.error('Error response data:', error.response?.data);
-      console.error('Request payload:', submitData);
+      console.error('Error response status:', error.response?.status);
+      console.error('Request payload:', JSON.stringify(submitData, null, 2));
       
       // Extract validation errors if available
       let errorMessage = 'Failed to create application form';
-      if (error.response?.data?.errors) {
-        const errors = error.response.data.errors;
-        const errorMessages = Object.values(errors).flat();
-        errorMessage = errorMessages.join(', ') || errorMessage;
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
+      
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        console.error('Full error data:', errorData);
+        
+        if (errorData.errors) {
+          const errors = errorData.errors;
+          const errorMessages = Object.values(errors).flat();
+          errorMessage = errorMessages.join(', ') || errorMessage;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+          // Include file and line if available for debugging
+          if (errorData.file && errorData.line) {
+            errorMessage += ` (${errorData.file}:${errorData.line})`;
+          }
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
       }
       
+      console.error('Final error message:', errorMessage);
       setToast({ type: 'error', message: errorMessage });
     }
   };
@@ -1152,7 +1174,7 @@ const ProgramDetails = () => {
             field_name: field.field_name || '',
             field_label: field.field_label || '',
             field_type: field.field_type || 'text',
-            field_description: field.field_description || null,
+            field_description: (field.field_description && field.field_description.trim()) ? field.field_description.trim() : null,
             is_required: field.is_required || false,
             field_options: fieldOptions,
             validation_rules: validationRules,
