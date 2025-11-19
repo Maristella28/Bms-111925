@@ -1195,10 +1195,45 @@ const StaffManagement = () => {
                                 console.log('Opening permissions modal for:', member.name);
                                 console.log('Initial permissions:', JSON.stringify(initialPermissions, null, 2));
                                 console.log('Residents permissions:', JSON.stringify(initialPermissions.residents, null, 2));
+                                console.log('Main records nested:', JSON.stringify(initialPermissions.residents?.sub_permissions?.main_records, null, 2));
                                 
                                 // Ensure all nested permissions are initialized with default structure
+                                // First normalize, then merge with defaults to ensure all nested keys exist
                                 const normalizedPermissions = normalizePermissions(initialPermissions);
+                                
+                                // Ensure all nested permissions from default structure are present
+                                Object.keys(defaultPermissions).forEach(uiKey => {
+                                  const defaultPerm = defaultPermissions[uiKey];
+                                  if (defaultPerm.sub_permissions) {
+                                    Object.keys(defaultPerm.sub_permissions).forEach(subKey => {
+                                      const defaultSubPerm = defaultPerm.sub_permissions[subKey];
+                                      if (typeof defaultSubPerm === 'object' && defaultSubPerm.sub_permissions) {
+                                        // Ensure nested sub-permissions structure exists
+                                        if (!normalizedPermissions[uiKey]) {
+                                          normalizedPermissions[uiKey] = { access: false, sub_permissions: {} };
+                                        }
+                                        if (!normalizedPermissions[uiKey].sub_permissions) {
+                                          normalizedPermissions[uiKey].sub_permissions = {};
+                                        }
+                                        if (!normalizedPermissions[uiKey].sub_permissions[subKey]) {
+                                          normalizedPermissions[uiKey].sub_permissions[subKey] = { access: false, sub_permissions: {} };
+                                        }
+                                        if (!normalizedPermissions[uiKey].sub_permissions[subKey].sub_permissions) {
+                                          normalizedPermissions[uiKey].sub_permissions[subKey].sub_permissions = {};
+                                        }
+                                        // Ensure all nested keys from default exist
+                                        Object.keys(defaultSubPerm.sub_permissions).forEach(nestedKey => {
+                                          if (normalizedPermissions[uiKey].sub_permissions[subKey].sub_permissions[nestedKey] === undefined) {
+                                            normalizedPermissions[uiKey].sub_permissions[subKey].sub_permissions[nestedKey] = false;
+                                          }
+                                        });
+                                      }
+                                    });
+                                  }
+                                });
+                                
                                 console.log('Normalized permissions:', JSON.stringify(normalizedPermissions, null, 2));
+                                console.log('Residents main_records after normalization:', JSON.stringify(normalizedPermissions.residents?.sub_permissions?.main_records, null, 2));
                                 
                                 setEditingStaff({
                                   ...member,
@@ -1351,26 +1386,31 @@ const StaffManagement = () => {
                                         const newValue = e.target.checked;
                                         if (hasNestedSubPermissions) {
                                           // Handle nested sub-permissions
-                                      setEditingStaff(prev => ({
-                                        ...prev,
-                                        module_permissions: {
-                                          ...(prev.module_permissions || {}),
-                                          [moduleKey]: {
-                                            ...currentPermission,
-                                            sub_permissions: {
-                                              ...(currentPermission.sub_permissions || {}),
-                                                  [subKey]: {
-                                                    access: newValue,
-                                                    // If enabling, enable all nested sub-permissions; if disabling, disable all
-                                                    sub_permissions: Object.keys(subDefault.sub_permissions).reduce((acc, nestedKey) => {
-                                                      acc[nestedKey] = newValue;
-                                                      return acc;
-                                                    }, {})
+                                          setEditingStaff(prev => {
+                                            // When toggling Main Records: if ON, enable all nested; if OFF, disable all
+                                            const updatedNested = Object.keys(subDefault.sub_permissions).reduce((acc, nestedKey) => {
+                                              acc[nestedKey] = newValue; // Set all nested permissions to the same value as Main Records toggle
+                                              return acc;
+                                            }, {});
+                                            
+                                            return {
+                                              ...prev,
+                                              module_permissions: {
+                                                ...(prev.module_permissions || {}),
+                                                [moduleKey]: {
+                                                  ...currentPermission,
+                                                  access: newValue ? true : currentPermission.access, // Keep module access if enabling
+                                                  sub_permissions: {
+                                                    ...(currentPermission.sub_permissions || {}),
+                                                    [subKey]: {
+                                                      access: newValue,
+                                                      sub_permissions: updatedNested
+                                                    }
                                                   }
-                                            }
-                                          }
-                                        }
-                                      }));
+                                                }
+                                              }
+                                            };
+                                          });
                                         } else {
                                           // Handle simple boolean sub-permission
                                           setEditingStaff(prev => ({
@@ -1395,8 +1435,8 @@ const StaffManagement = () => {
                                 </div>
                                 
                                 {/* Nested sub-permissions (e.g., main_records: edit, disable, view) */}
-                                {/* Show nested permissions if subPermission.access is true OR if any nested permission is true */}
-                                {hasNestedSubPermissions && (subPermission?.access || Object.values(subPermission?.sub_permissions || {}).some(v => v === true)) && (
+                                {/* Always show nested permissions if they exist in the structure, so users can toggle them individually */}
+                                {hasNestedSubPermissions && (
                                   <div className="ml-6 mt-3 space-y-2 pt-3 border-t border-gray-200">
                                     {Object.entries(subDefault.sub_permissions).map(([nestedKey, nestedDefault]) => {
                                       const nestedPermission = subPermission.sub_permissions?.[nestedKey] || false;
