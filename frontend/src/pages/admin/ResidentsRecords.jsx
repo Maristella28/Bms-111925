@@ -728,28 +728,43 @@ const ActionsDropdown = ({ resident, onEdit, onDisable, onView }) => {
   // For staff users, check specific action permissions
   // For admin users, always allow
   const isAdmin = user?.role === 'admin';
-  const canEdit = isAdmin || canPerformAction('edit', 'residents', 'main_records');
-  const canDisable = isAdmin || canPerformAction('disable', 'residents', 'main_records');
-  const canView = isAdmin || canPerformAction('view', 'residents', 'main_records');
+  
+  // For staff users, ensure we have permissions loaded before checking
+  const hasPermissionsLoaded = user?.role !== 'staff' || (user?.module_permissions && Object.keys(user.module_permissions).length > 1);
+  
+  // Only check permissions if they're loaded (or if admin)
+  const canEdit = isAdmin || (hasPermissionsLoaded && canPerformAction('edit', 'residents', 'main_records'));
+  const canDisable = isAdmin || (hasPermissionsLoaded && canPerformAction('disable', 'residents', 'main_records'));
+  const canView = isAdmin || (hasPermissionsLoaded && canPerformAction('view', 'residents', 'main_records'));
   
   // Debug logging for staff users
   if (user?.role === 'staff') {
     const perms = user?.module_permissions || {};
-    console.log('ActionsDropdown permissions check:', {
+    const allKeys = Object.keys(perms);
+    const residentsKeys = allKeys.filter(k => k.includes('residents'));
+    
+    console.log('🔍 ActionsDropdown permissions check:', {
       userRole: user?.role,
       isAdmin,
+      hasPermissionsLoaded,
       canEdit,
       canDisable,
       canView,
-      module_permissions: perms,
+      hasModulePermissions: !!user?.module_permissions,
+      modulePermissionsCount: allKeys.length,
+      allKeys: allKeys,
+      residentsKeys: residentsKeys,
+      // Direct permission values
       residentsRecords_main_records_edit: perms.residentsRecords_main_records_edit,
       residentsRecords_main_records_disable: perms.residentsRecords_main_records_disable,
       residentsRecords_main_records_view: perms.residentsRecords_main_records_view,
-      allResidentsKeys: Object.keys(perms).filter(k => k.includes('residents')),
       // Test the permission check directly
       testEdit: canPerformAction('edit', 'residents', 'main_records'),
       testDisable: canPerformAction('disable', 'residents', 'main_records'),
-      testView: canPerformAction('view', 'residents', 'main_records')
+      testView: canPerformAction('view', 'residents', 'main_records'),
+      // Check if main_records permission exists
+      residentsRecords_main_records: perms.residentsRecords_main_records,
+      residentsRecords: perms.residentsRecords
     });
   }
 
@@ -864,7 +879,7 @@ const ActionsDropdown = ({ resident, onEdit, onDisable, onView }) => {
     });
   }
   
-  // If no actions are available, don't show the dropdown
+  // If no actions are available, show a disabled indicator for debugging
   if (menuItems.length === 0) {
     if (user?.role === 'staff') {
       console.warn('ActionsDropdown: No menu items available - all permissions are false', {
@@ -872,8 +887,26 @@ const ActionsDropdown = ({ resident, onEdit, onDisable, onView }) => {
         canEdit,
         canDisable,
         module_permissions: user?.module_permissions,
-        userObject: user
+        userObject: user,
+        // Check raw permission values
+        rawEdit: user?.module_permissions?.residentsRecords_main_records_edit,
+        rawDisable: user?.module_permissions?.residentsRecords_main_records_disable,
+        rawView: user?.module_permissions?.residentsRecords_main_records_view
       });
+      
+      // For debugging: Show a disabled button to indicate the component is rendering
+      // Remove this in production once issue is fixed
+      return (
+        <div className="relative inline-block text-left" title="No permissions available">
+          <button
+            disabled
+            className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gray-100 text-gray-400 cursor-not-allowed opacity-50"
+            aria-label="No actions available"
+          >
+            <ChevronDownIcon className="w-5 h-5" />
+          </button>
+        </div>
+      );
     }
     return null;
   }
