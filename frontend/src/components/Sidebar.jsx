@@ -39,7 +39,7 @@ import axiosInstance from '../utils/axiosConfig';
 import {
   LayoutDashboard, Users, FileText, Home, Book,
   DollarSign, UserCog, Megaphone, Handshake, AlertTriangle,
-  Boxes, Projector, Activity, ChevronDown, ChevronRight, Server
+  Boxes, Projector, Activity, ChevronDown, ChevronRight, Server, Settings
 } from 'lucide-react';
 
 const Sidebar = ({ permissions: propPermissions = {} }) => {
@@ -134,26 +134,6 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
       ]
     },
     { 
-      title: "Document Records", 
-      icon: <FileText size={iconSize} />, 
-      path: `/${userRole}/documentsRecords`,
-      module: "documents",
-      subItems: [
-        { 
-          title: "Document Requests", 
-          path: `/${userRole}/documentsRecords?tab=requests`,
-          module: "documents",
-          subModule: "document_requests"
-        },
-        { 
-          title: "Document Records", 
-          path: `/${userRole}/documentsRecords?tab=records`,
-          module: "documents",
-          subModule: "document_records"
-        }
-      ]
-    },
-    { 
       title: "Household Records", 
       icon: <Home size={iconSize} />, 
       path: `/${userRole}/householdRecords`,
@@ -166,28 +146,10 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
       module: "blotter"
     },
     { 
-      title: "Financial Management", 
-      icon: <DollarSign size={iconSize} />, 
-      path: `/${userRole}/financialTracking`,
-      module: "treasurer"
-    },
-    { 
-      title: "Barangay Officials", 
-      icon: <UserCog size={iconSize} />, 
-      path: `/${userRole}/barangayOfficials`,
-      module: "officials"
-    },
-    { 
       title: "Staff Management", 
       icon: <Users size={iconSize} />, 
       path: `/${userRole}/staff`,
       module: "staff"
-    },
-    { 
-      title: "Communication", 
-      icon: <Megaphone size={iconSize} />, 
-      path: `/${userRole}/communicationAnnouncement`,
-      module: "communication"
     },
     { 
       title: "Social Services", 
@@ -210,16 +172,54 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
       ]
     },
     { 
-      title: "Disaster Response", 
-      icon: <AlertTriangle size={iconSize} />, 
-      path: `/${userRole}/disasterEmergency`,
-      module: "command_center"
+      title: "Activity Logs", 
+      icon: <Activity size={iconSize} />, 
+      path: `/${userRole}/activityLogs`,
+      module: "logs"
     },
     { 
-      title: "Projects", 
-      icon: <Projector size={iconSize} />, 
-      path: `/${userRole}/projectManagement`,
-      module: "projects"
+      title: "Backup Management", 
+      icon: <Server size={iconSize} />, 
+      path: `/${userRole}/backup`,
+      module: "backup"
+    },
+    { 
+      title: "Others", 
+      icon: <Settings size={iconSize} />, 
+      path: `/${userRole}/others`,
+      module: "others",
+      subItems: [
+        { 
+          title: "Document Records", 
+          path: `/${userRole}/documentsRecords`,
+          module: "documents"
+        },
+        { 
+          title: "Financial Management", 
+          path: `/${userRole}/financialTracking`,
+          module: "treasurer"
+        },
+        { 
+          title: "Barangay Officials", 
+          path: `/${userRole}/barangayOfficials`,
+          module: "officials"
+        },
+        { 
+          title: "Communication", 
+          path: `/${userRole}/communicationAnnouncement`,
+          module: "communication"
+        },
+        { 
+          title: "Disaster Response", 
+          path: `/${userRole}/disasterEmergency`,
+          module: "command_center"
+        },
+        { 
+          title: "Projects", 
+          path: `/${userRole}/projectManagement`,
+          module: "projects"
+        }
+      ]
     },
     { 
       title: "Inventory", 
@@ -246,18 +246,6 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
           subModule: "asset_tracking"
         }
       ]
-    },
-    { 
-      title: "Activity Logs", 
-      icon: <Activity size={iconSize} />, 
-      path: `/${userRole}/activityLogs`,
-      module: "logs"
-    },
-    { 
-      title: "Backup Management", 
-      icon: <Server size={iconSize} />, 
-      path: `/${userRole}/backup`,
-      module: "backup"
     }
   ];
 
@@ -772,6 +760,18 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
 
       // For staff, check module permissions using the new permission system
       if (user?.role === 'staff') {
+        // Special handling for "Others" section - show if user has access to any sub-item
+        if (item.module === 'others' && item.subItems) {
+          // Filter sub-items based on permissions
+          item.subItems = item.subItems.filter(subItem => {
+            // Check if user has access to the sub-item's module
+            return hasModuleAccess(subItem.module);
+          });
+          
+          // Show "Others" section only if it has accessible sub-items
+          return item.subItems.length > 0;
+        }
+        
         // Check if user has access to the main module
         const hasAccess = hasModuleAccess(item.module);
         
@@ -782,9 +782,14 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
         
         if (item.subItems) {
           // For items with sub-items, filter sub-items based on sub-module permissions
-          item.subItems = item.subItems.filter(subItem => 
-            hasSubModuleAccess(subItem.module, subItem.subModule)
-          );
+          item.subItems = item.subItems.filter(subItem => {
+            // If sub-item has subModule, check sub-module permission
+            if (subItem.subModule) {
+              return hasSubModuleAccess(subItem.module, subItem.subModule);
+            }
+            // Otherwise, just check module access
+            return hasModuleAccess(subItem.module);
+          });
           
           // Show parent item only if it has accessible sub-items
           return item.subItems.length > 0;
@@ -887,50 +892,96 @@ const Sidebar = ({ permissions: propPermissions = {} }) => {
                   }
                   return location.pathname === subItem.path;
                 }));
-              const isExpanded = expandedItems.has(item.title);
+              
+              // Auto-expand "Others" if any of its sub-items is active
+              const hasActiveSubItem = item.subItems && item.subItems.some(subItem => {
+                if (subItem.path.includes('?')) {
+                  const [subPath] = subItem.path.split('?');
+                  return location.pathname === subPath || location.pathname.startsWith(subPath);
+                }
+                return location.pathname === subItem.path || location.pathname.startsWith(subItem.path);
+              });
+              
+              // Auto-expand if sub-item is active or manually expanded
+              const shouldBeExpanded = hasActiveSubItem || expandedItems.has(item.title);
+              const isExpanded = shouldBeExpanded;
               const hasSubItems = item.subItems && item.subItems.length > 0;
               
               return (
                 <li key={idx}>
                   <div className="flex items-center">
-                    <Link
-                      to={item.path}
-                      onClick={() => {
-                        if (window.innerWidth < 1024) {
-                          closeMobileSidebar();
-                        }
-                      }}
-                      className={`relative flex items-center gap-4 px-4 py-3 rounded-lg transition-all duration-200 group flex-1
-                        ${isCollapsed ? 'justify-center' : ''}
-                        ${isActive
-                          ? "bg-green-700 text-white font-semibold border-l-4 border-lime-300"
-                          : "hover:bg-green-700 hover:text-white text-green-100"
-                        }`}
-                      title={isCollapsed ? item.title : ''}
-                    >
-                      <span className="relative group-hover:scale-110 transition-transform flex-shrink-0">
-                        {item.icon}
-                        {isCollapsed && <NotificationBadge count={getNotificationCount(item)} showDot />}
-                      </span>
-                      {!isCollapsed && (
-                        <span className="truncate text-sm tracking-wide flex-1 relative flex items-center justify-between gap-3 min-w-0">
-                          <span className="truncate flex-1">{item.title}</span>
-                          <NotificationBadge 
-                            count={getNotificationCount(item)} 
-                            variant="circular"
-                            className="flex-shrink-0 ml-auto" 
-                          />
-                        </span>
-                      )}
-                    </Link>
-                    
-                    {hasSubItems && !isCollapsed && (
-                      <button
+                    {/* For "Others" section, make it non-clickable and only expandable */}
+                    {item.module === 'others' && hasSubItems ? (
+                      <div
                         onClick={() => toggleExpanded(item.title)}
-                        className="px-2 py-3 text-green-100 hover:text-white transition-colors"
+                        className={`relative flex items-center gap-4 px-4 py-3 rounded-lg transition-all duration-200 group flex-1 cursor-pointer
+                          ${isCollapsed ? 'justify-center' : ''}
+                          ${isActive
+                            ? "bg-green-700 text-white font-semibold border-l-4 border-lime-300"
+                            : "hover:bg-green-700 hover:text-white text-green-100"
+                          }`}
+                        title={isCollapsed ? item.title : ''}
                       >
-                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                      </button>
+                        <span className="relative group-hover:scale-110 transition-transform flex-shrink-0">
+                          {item.icon}
+                          {isCollapsed && <NotificationBadge count={getNotificationCount(item)} showDot />}
+                        </span>
+                        {!isCollapsed && (
+                          <span className="truncate text-sm tracking-wide flex-1 relative flex items-center justify-between gap-3 min-w-0">
+                            <span className="truncate flex-1">{item.title}</span>
+                            <NotificationBadge 
+                              count={getNotificationCount(item)} 
+                              variant="circular"
+                              className="flex-shrink-0 ml-auto" 
+                            />
+                            <span className="flex-shrink-0">
+                              {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <Link
+                          to={item.path}
+                          onClick={() => {
+                            if (window.innerWidth < 1024) {
+                              closeMobileSidebar();
+                            }
+                          }}
+                          className={`relative flex items-center gap-4 px-4 py-3 rounded-lg transition-all duration-200 group flex-1
+                            ${isCollapsed ? 'justify-center' : ''}
+                            ${isActive
+                              ? "bg-green-700 text-white font-semibold border-l-4 border-lime-300"
+                              : "hover:bg-green-700 hover:text-white text-green-100"
+                            }`}
+                          title={isCollapsed ? item.title : ''}
+                        >
+                          <span className="relative group-hover:scale-110 transition-transform flex-shrink-0">
+                            {item.icon}
+                            {isCollapsed && <NotificationBadge count={getNotificationCount(item)} showDot />}
+                          </span>
+                          {!isCollapsed && (
+                            <span className="truncate text-sm tracking-wide flex-1 relative flex items-center justify-between gap-3 min-w-0">
+                              <span className="truncate flex-1">{item.title}</span>
+                              <NotificationBadge 
+                                count={getNotificationCount(item)} 
+                                variant="circular"
+                                className="flex-shrink-0 ml-auto" 
+                              />
+                            </span>
+                          )}
+                        </Link>
+                        
+                        {hasSubItems && !isCollapsed && (
+                          <button
+                            onClick={() => toggleExpanded(item.title)}
+                            className="px-2 py-3 text-green-100 hover:text-white transition-colors"
+                          >
+                            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                   
