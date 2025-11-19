@@ -1618,9 +1618,12 @@ const ResidentsRecords = () => {
     // Check if user has view permission (for staff users)
     // Admin users always have access
     if (user?.role === 'staff') {
-      // Check permission - but also check direct permission value as fallback
+      // Check permission using multiple methods to ensure we catch it
       const hasViewPermission = canPerformAction('view', 'residents', 'main_records') || 
-                                user?.module_permissions?.residentsRecords_main_records_view === true;
+                                user?.module_permissions?.residentsRecords_main_records_view === true ||
+                                user?.module_permissions?.residentsRecords_main_records_view === 1 ||
+                                user?.module_permissions?.residentsRecords_main_records_view === '1';
+      
       console.log('View permission check in handleShowDetails:', {
         canView: hasViewPermission,
         canPerformActionResult: canPerformAction('view', 'residents', 'main_records'),
@@ -1628,6 +1631,7 @@ const ResidentsRecords = () => {
         permissions: user?.module_permissions,
         allResidentsKeys: Object.keys(user?.module_permissions || {}).filter(k => k.includes('residents'))
       });
+      
       if (!hasViewPermission) {
         toast.error('You do not have permission to view resident details');
         return;
@@ -1664,15 +1668,19 @@ const ResidentsRecords = () => {
     // Check if user has edit permission (for staff users)
     // Admin users always have access
     if (user?.role === 'staff') {
-      // Check permission - but also check direct permission value as fallback
+      // Check permission using multiple methods to ensure we catch it
       const hasEditPermission = canPerformAction('edit', 'residents', 'main_records') || 
-                               user?.module_permissions?.residentsRecords_main_records_edit === true;
+                               user?.module_permissions?.residentsRecords_main_records_edit === true ||
+                               user?.module_permissions?.residentsRecords_main_records_edit === 1 ||
+                               user?.module_permissions?.residentsRecords_main_records_edit === '1';
+      
       console.log('Edit permission check in handleUpdate:', {
         canEdit: hasEditPermission,
         canPerformActionResult: canPerformAction('edit', 'residents', 'main_records'),
         directPermissionValue: user?.module_permissions?.residentsRecords_main_records_edit,
         permissions: user?.module_permissions
       });
+      
       if (!hasEditPermission) {
         toast.error('You do not have permission to edit resident details');
         return;
@@ -2005,12 +2013,19 @@ const ResidentsRecords = () => {
     // Check if user has disable permission (for staff users)
     // Admin users always have access
     if (user?.role === 'staff') {
-      const hasDisablePermission = canPerformAction('disable', 'residents', 'main_records');
+      // Check permission using multiple methods to ensure we catch it
+      const hasDisablePermission = canPerformAction('disable', 'residents', 'main_records') || 
+                                  user?.module_permissions?.residentsRecords_main_records_disable === true ||
+                                  user?.module_permissions?.residentsRecords_main_records_disable === 1 ||
+                                  user?.module_permissions?.residentsRecords_main_records_disable === '1';
+      
       console.log('Disable permission check in handleDelete:', {
         canDisable: hasDisablePermission,
-        permissions: user?.module_permissions,
-        residentsRecords_main_records_disable: user?.module_permissions?.residentsRecords_main_records_disable
+        canPerformActionResult: canPerformAction('disable', 'residents', 'main_records'),
+        directPermissionValue: user?.module_permissions?.residentsRecords_main_records_disable,
+        permissions: user?.module_permissions
       });
+      
       if (!hasDisablePermission) {
         toast.error('You do not have permission to disable residents');
         return;
@@ -3842,7 +3857,13 @@ const ResidentsRecords = () => {
                           </td>
                         </tr>
 
-                        {selectedResident?.id === (r.id || r.user_id) && (user?.role === 'admin' || canPerformAction('view', 'residents', 'main_records')) && (
+                        {selectedResident?.id === (r.id || r.user_id) && (
+                          user?.role === 'admin' || 
+                          canPerformAction('view', 'residents', 'main_records') || 
+                          user?.module_permissions?.residentsRecords_main_records_view === true ||
+                          user?.module_permissions?.residentsRecords_main_records_view === 1 ||
+                          user?.module_permissions?.residentsRecords_main_records_view === '1'
+                        ) && (
                           <tr className="bg-gradient-to-r from-green-50 to-emerald-50">
                             <td colSpan="8" className="px-8 py-8">
                               {detailLoading ? (
