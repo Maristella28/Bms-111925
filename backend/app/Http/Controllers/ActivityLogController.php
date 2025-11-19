@@ -319,6 +319,8 @@ class ActivityLogController extends Controller
             if (!empty($activeUserIds)) {
                 $inactiveResidents = $inactiveResidents->whereNotIn('user_id', $activeUserIds);
             }
+            
+            $inactiveResidents = $inactiveResidents
                 ->select('residents.*')
                 ->selectRaw('(
                     SELECT MAX(created_at) 
