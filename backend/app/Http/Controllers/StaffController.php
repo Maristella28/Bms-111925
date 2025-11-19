@@ -437,7 +437,40 @@ class StaffController extends Controller
             
             // Update with incoming permissions (only the ones being changed)
             foreach ($incomingPermissions as $key => $value) {
-                $finalPermissions[$key] = $value;
+                $finalPermissions[$key] = filter_var($value, FILTER_VALIDATE_BOOLEAN);
+            }
+            
+            // CRITICAL: Ensure all nested permissions for residentsRecords_main_records are present
+            // Even if they weren't in incomingPermissions, we need to preserve them from currentPermissions
+            // or set them to false if they don't exist
+            $residentsNestedKeys = [
+                'residentsRecords_main_records',
+                'residentsRecords_main_records_view',
+                'residentsRecords_main_records_edit',
+                'residentsRecords_main_records_disable',
+                'residentsRecords_disabled_residents'
+            ];
+            
+            // Log what we have before ensuring nested keys
+            Log::info('Before ensuring nested keys', [
+                'incoming_has_main_records' => isset($incomingPermissions['residentsRecords_main_records']),
+                'incoming_has_view' => isset($incomingPermissions['residentsRecords_main_records_view']),
+                'incoming_has_edit' => isset($incomingPermissions['residentsRecords_main_records_edit']),
+                'incoming_has_disable' => isset($incomingPermissions['residentsRecords_main_records_disable']),
+                'current_has_main_records' => isset($currentPermissions['residentsRecords_main_records']),
+                'current_has_view' => isset($currentPermissions['residentsRecords_main_records_view']),
+            ]);
+            
+            // Always ensure nested permissions are present, regardless of main module state
+            // This ensures they're always saved, even if the frontend didn't send them
+            foreach ($residentsNestedKeys as $nestedKey) {
+                if (!isset($finalPermissions[$nestedKey])) {
+                    // Prefer incoming (if sent), then current (if exists), then false
+                    $finalPermissions[$nestedKey] = $incomingPermissions[$nestedKey] ?? $currentPermissions[$nestedKey] ?? false;
+                    Log::info("Added missing nested key: {$nestedKey} = " . ($finalPermissions[$nestedKey] ? 'true' : 'false'), [
+                        'source' => isset($incomingPermissions[$nestedKey]) ? 'incoming' : (isset($currentPermissions[$nestedKey]) ? 'current' : 'default')
+                    ]);
+                }
             }
             
             // Ensure main module keys exist (merge defaults for missing main keys only)

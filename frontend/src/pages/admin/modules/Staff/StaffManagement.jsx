@@ -276,26 +276,33 @@ const StaffManagement = () => {
           console.log(`Setting ${apiKey} = ${out[apiKey]}`);
           
           Object.entries(val.sub_permissions).forEach(([subKey, subVal]) => {
+            // Check if this sub-permission has nested sub-permissions in the default structure
+            const defaultSubPerm = defaultPermissions[uiKey]?.sub_permissions?.[subKey];
+            const hasNestedInDefault = typeof defaultSubPerm === 'object' && defaultSubPerm !== null && defaultSubPerm.sub_permissions;
+            
             // Check if subVal has nested sub-permissions (e.g., main_records with edit, disable, view)
-            if (typeof subVal === 'object' && subVal !== null && subVal.sub_permissions) {
+            if (hasNestedInDefault || (typeof subVal === 'object' && subVal !== null && subVal.sub_permissions)) {
               // Handle nested sub-permissions
               const subModuleKey = `${apiKey}_${subKey}`;
-              out[subModuleKey] = Boolean(subVal.access);
+              // Get access value from subVal if it exists, otherwise default to false
+              const subAccess = typeof subVal === 'object' && subVal !== null ? Boolean(subVal.access) : Boolean(subVal);
+              out[subModuleKey] = subAccess;
               console.log(`Setting ${subModuleKey} = ${out[subModuleKey]}`);
               
-              // Get the default structure for this sub-permission to ensure we include all nested keys
-              const defaultSubPerm = defaultPermissions[uiKey]?.sub_permissions?.[subKey];
-              // Always use default structure keys to ensure we send ALL possible nested permissions
+              // CRITICAL: Always use default structure keys to ensure we send ALL possible nested permissions
+              // This is important even if the parent is false - we need to send all nested permissions
               const allNestedKeys = defaultSubPerm?.sub_permissions 
                 ? Object.keys(defaultSubPerm.sub_permissions)
-                : (subVal.sub_permissions ? Object.keys(subVal.sub_permissions) : []);
+                : (subVal && typeof subVal === 'object' && subVal.sub_permissions ? Object.keys(subVal.sub_permissions) : []);
               
               // Include ALL nested permission keys from default structure, even if they don't exist in current state
               // This ensures we always send complete permission data to the backend
               allNestedKeys.forEach((nestedKey) => {
                 const nestedKeyFull = `${apiKey}_${subKey}_${nestedKey}`;
                 // Use the value from state if it exists, otherwise default to false
-                const nestedVal = subVal.sub_permissions?.[nestedKey];
+                const nestedVal = subVal && typeof subVal === 'object' && subVal.sub_permissions 
+                  ? subVal.sub_permissions[nestedKey] 
+                  : undefined;
                 const nestedValue = nestedVal !== undefined ? Boolean(nestedVal) : false;
                 out[nestedKeyFull] = nestedValue;
                 console.log(`Setting ${nestedKeyFull} = ${out[nestedKeyFull]}`);
