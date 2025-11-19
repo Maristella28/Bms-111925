@@ -249,6 +249,122 @@ const SocialServices = () => {
     }
   };
 
+  // Export a specific program to Excel
+  const exportProgramToExcel = (program) => {
+    try {
+      if (!program || !program.id) {
+        alert('Invalid program data.');
+        return;
+      }
+
+      const programBeneficiaries = getBeneficiariesByProgram(program.id);
+
+      // Create CSV content with detailed records
+      const csvRows = [];
+      
+      // Header section
+      csvRows.push(['GOVERNMENT PROGRAM - DETAILED ASSISTANCE RECORD']);
+      csvRows.push(['Generated on:', new Date().toLocaleDateString()]);
+      csvRows.push([]);
+      
+      // Program Information Section
+      csvRows.push(['PROGRAM INFORMATION']);
+      csvRows.push(['Program ID', program.id || 'N/A']);
+      csvRows.push(['Program Name', program.name || 'N/A']);
+      csvRows.push(['Description', program.description || 'N/A']);
+      csvRows.push(['Assistance Type', program.assistance_type || program.assistanceType || 'N/A']);
+      csvRows.push(['Beneficiary Type', program.beneficiary_type || program.beneficiaryType || 'N/A']);
+      csvRows.push(['Status', program.status || 'N/A']);
+      csvRows.push(['Start Date', program.start_date || program.startDate ? formatDate(program.start_date || program.startDate) : 'N/A']);
+      csvRows.push(['End Date', program.end_date || program.endDate ? formatDate(program.end_date || program.endDate) : 'N/A']);
+      csvRows.push(['Payout Date', program.payout_date || program.payoutDate ? formatDate(program.payout_date || program.payoutDate) : 'N/A']);
+      csvRows.push(['Amount per Beneficiary', program.amount ? formatCurrency(program.amount) : 'N/A']);
+      csvRows.push(['Maximum Beneficiaries', program.max_beneficiaries || program.maxBeneficiaries || 'N/A']);
+      csvRows.push(['Total Budget', program.amount && (program.max_beneficiaries || program.maxBeneficiaries) 
+        ? formatCurrency(parseFloat(program.amount) * parseInt(program.max_beneficiaries || program.maxBeneficiaries || 0))
+        : 'N/A']);
+      csvRows.push([]);
+      
+      // Beneficiaries Details Section
+      if (programBeneficiaries.length > 0) {
+        csvRows.push(['BENEFICIARIES DETAILS']);
+        csvRows.push([
+          'Beneficiary ID',
+          'Name',
+          'Email',
+          'Phone',
+          'Address',
+          'Status',
+          'Amount',
+          'Payment Date',
+          'Is Paid',
+          'Notes'
+        ]);
+        
+        programBeneficiaries.forEach((beneficiary, benIndex) => {
+          csvRows.push([
+            beneficiary.id || `BEN-${benIndex + 1}`,
+            beneficiary.name || 'N/A',
+            beneficiary.email || 'N/A',
+            beneficiary.phone || beneficiary.contact_number || 'N/A',
+            beneficiary.address || 'N/A',
+            beneficiary.status || 'N/A',
+            beneficiary.amount ? formatCurrency(beneficiary.amount) : 'N/A',
+            beneficiary.payment_date ? formatDate(beneficiary.payment_date) : 'N/A',
+            beneficiary.is_paid ? 'Yes' : 'No',
+            beneficiary.notes || beneficiary.remarks || 'N/A'
+          ]);
+        });
+        
+        // Beneficiaries Summary
+        csvRows.push([]);
+        csvRows.push(['BENEFICIARIES SUMMARY']);
+        csvRows.push(['Total Beneficiaries', programBeneficiaries.length]);
+        csvRows.push(['Paid Beneficiaries', programBeneficiaries.filter(b => b.is_paid).length]);
+        csvRows.push(['Pending Beneficiaries', programBeneficiaries.filter(b => !b.is_paid).length]);
+        csvRows.push(['Total Amount Disbursed', formatCurrency(programBeneficiaries.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0))]);
+        csvRows.push(['Average Amount per Beneficiary', formatCurrency(
+          programBeneficiaries.length > 0 
+            ? programBeneficiaries.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0) / programBeneficiaries.length
+            : 0
+        )]);
+      } else {
+        csvRows.push(['BENEFICIARIES DETAILS']);
+        csvRows.push(['No beneficiaries recorded for this program.']);
+      }
+      
+      // Convert to CSV format
+      const csvContent = csvRows
+        .map(row => row.map(cell => {
+          const cellStr = String(cell || '');
+          if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n') || cellStr.includes('\r')) {
+            return `"${cellStr.replace(/"/g, '""')}"`;
+          }
+          return cellStr;
+        }).join(','))
+        .join('\r\n');
+
+      // Create and download the file
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const dateStr = new Date().toISOString().split('T')[0];
+      const programName = (program.name || 'program').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      link.download = `${programName}-report-${dateStr}.csv`;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      alert(`Successfully exported "${program.name || 'Program'}" with ${programBeneficiaries.length} beneficiary record(s).`);
+    } catch (error) {
+      console.error('Excel export error:', error);
+      alert('Failed to export program. Please try again.');
+    }
+  };
+
   // Export completed programs to Excel
   const exportCompletedProgramsToExcel = () => {
     try {
@@ -3364,6 +3480,7 @@ const SocialServices = () => {
                           handleEditProgramClick={handleEditProgramClick}
                           getEffectiveProgramStatus={getEffectiveProgramStatus}
                           areAllBeneficiariesPaid={areAllBeneficiariesPaid}
+                          exportProgramToExcel={exportProgramToExcel}
                           compactMode={true}
                         />
                       </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { HeartIcon, TrashIcon, PencilIcon, EyeIcon, CalendarIcon, ChartBarIcon } from '@heroicons/react/24/outline';
+import { HeartIcon, TrashIcon, PencilIcon, EyeIcon, CalendarIcon, ChartBarIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { useNavigate } from 'react-router-dom';
 
 const SocialCards = ({ 
@@ -12,6 +12,7 @@ const SocialCards = ({
   handleEditProgramClick,
   getEffectiveProgramStatus,
   areAllBeneficiariesPaid,
+  exportProgramToExcel,
   compactMode = false
 }) => {
   const navigate = useNavigate();
@@ -190,6 +191,20 @@ const SocialCards = ({
                   </div>
                 </button>
                 
+                {/* Export Button - Only for Completed Programs */}
+                {(effectiveStatus === 'complete' || isComplete) && exportProgramToExcel && (
+                  <button
+                    className="w-full bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white px-5 py-3.5 rounded-2xl text-sm sm:text-base font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] focus:outline-none focus:ring-4 focus:ring-emerald-500/30 group/btn"
+                    onClick={e => { e.stopPropagation(); exportProgramToExcel(program); }}
+                    title="Export this program's detailed records to Excel"
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      <ArrowDownTrayIcon className="w-5 h-5 group-hover/btn:scale-110 transition-transform duration-300" />
+                      <span>Export to Excel</span>
+                    </div>
+                  </button>
+                )}
+                
                 {/* Secondary Actions */}
                 <div className="flex gap-3">
                   <button
@@ -274,6 +289,20 @@ const SocialCards = ({
                     <span>View Details</span>
                   </div>
                 </button>
+                
+                {/* Export Button - Only for Completed Programs */}
+                {(effectiveStatus === 'complete' || isComplete) && exportProgramToExcel && (
+                  <button
+                    className="w-full bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white px-5 py-3.5 rounded-2xl text-sm sm:text-base font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] focus:outline-none focus:ring-4 focus:ring-emerald-500/30 group/btn"
+                    onClick={e => { e.stopPropagation(); exportProgramToExcel(program); }}
+                    title="Export this program's detailed records to Excel"
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      <ArrowDownTrayIcon className="w-5 h-5 group-hover/btn:scale-110 transition-transform duration-300" />
+                      <span>Export to Excel</span>
+                    </div>
+                  </button>
+                )}
                 
                 {/* Secondary Actions */}
                 <div className="flex gap-3">
