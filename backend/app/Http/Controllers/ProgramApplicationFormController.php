@@ -85,6 +85,18 @@ class ProgramApplicationFormController extends Controller
 
             // Create form fields
             foreach ($request->fields as $fieldData) {
+                // Handle field_options - convert empty array to null, ensure it's an array or null
+                $fieldOptions = null;
+                if (isset($fieldData['field_options']) && is_array($fieldData['field_options']) && count($fieldData['field_options']) > 0) {
+                    $fieldOptions = $fieldData['field_options'];
+                }
+                
+                // Handle validation_rules - convert empty object/array to null
+                $validationRules = null;
+                if (isset($fieldData['validation_rules']) && is_array($fieldData['validation_rules']) && count($fieldData['validation_rules']) > 0) {
+                    $validationRules = $fieldData['validation_rules'];
+                }
+                
                 ApplicationFormField::create([
                     'form_id' => $form->id,
                     'field_name' => $fieldData['field_name'],
@@ -92,9 +104,10 @@ class ProgramApplicationFormController extends Controller
                     'field_type' => $fieldData['field_type'],
                     'field_description' => $fieldData['field_description'] ?? null,
                     'is_required' => $fieldData['is_required'] ?? false,
-                    'field_options' => $fieldData['field_options'] ?? null,
-                    'validation_rules' => $fieldData['validation_rules'] ?? null,
-                    'sort_order' => $fieldData['sort_order'] ?? 0
+                    'field_options' => $fieldOptions,
+                    'validation_rules' => $validationRules,
+                    'sort_order' => $fieldData['sort_order'] ?? 0,
+                    'is_active' => $fieldData['is_active'] ?? true
                 ]);
             }
 

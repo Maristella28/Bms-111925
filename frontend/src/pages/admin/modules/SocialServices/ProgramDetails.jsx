@@ -1003,7 +1003,34 @@ const ProgramDetails = () => {
         status: formData.status || 'draft',
         allow_multiple_submissions: formData.allow_multiple_submissions || false,
         form_settings: formData.form_settings || {},
-        fields: formData.fields || []
+        fields: (formData.fields || []).map(field => {
+          // Clean up field_options - only send if it's a non-empty array
+          let fieldOptions = null;
+          if (field.field_options && Array.isArray(field.field_options) && field.field_options.length > 0) {
+            fieldOptions = field.field_options;
+          }
+          
+          // Clean up validation_rules - only send if it's a non-empty object/array
+          let validationRules = null;
+          if (field.validation_rules && typeof field.validation_rules === 'object') {
+            const rulesKeys = Object.keys(field.validation_rules);
+            if (rulesKeys.length > 0) {
+              validationRules = field.validation_rules;
+            }
+          }
+          
+          return {
+            field_name: field.field_name || '',
+            field_label: field.field_label || '',
+            field_type: field.field_type || 'text',
+            field_description: field.field_description || null,
+            is_required: field.is_required || false,
+            field_options: fieldOptions,
+            validation_rules: validationRules,
+            sort_order: field.sort_order !== undefined ? field.sort_order : 0,
+            is_active: field.is_active !== undefined ? field.is_active : true
+          };
+        })
       };
 
       // Handle deadline - convert to proper format and set published_at if needed
@@ -1083,7 +1110,34 @@ const ProgramDetails = () => {
         status: formData.status || 'draft',
         allow_multiple_submissions: formData.allow_multiple_submissions || false,
         form_settings: formData.form_settings || {},
-        fields: formData.fields || []
+        fields: (formData.fields || []).map(field => {
+          // Clean up field_options - only send if it's a non-empty array
+          let fieldOptions = null;
+          if (field.field_options && Array.isArray(field.field_options) && field.field_options.length > 0) {
+            fieldOptions = field.field_options;
+          }
+          
+          // Clean up validation_rules - only send if it's a non-empty object/array
+          let validationRules = null;
+          if (field.validation_rules && typeof field.validation_rules === 'object') {
+            const rulesKeys = Object.keys(field.validation_rules);
+            if (rulesKeys.length > 0) {
+              validationRules = field.validation_rules;
+            }
+          }
+          
+          return {
+            field_name: field.field_name || '',
+            field_label: field.field_label || '',
+            field_type: field.field_type || 'text',
+            field_description: field.field_description || null,
+            is_required: field.is_required || false,
+            field_options: fieldOptions,
+            validation_rules: validationRules,
+            sort_order: field.sort_order !== undefined ? field.sort_order : 0,
+            is_active: field.is_active !== undefined ? field.is_active : true
+          };
+        })
       };
 
       // Handle deadline - convert to proper format
